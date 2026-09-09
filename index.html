@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tetris v0.1</title>
+<style>
+  /* ---------- Dark minimal theme ---------- */
+  :root {
+    --bg: #0d0f12;
+    --panel: #161a20;
+    --border: #2a3038;
+    --text: #d7dde5;
+    --text-dim: #7b8494;
+    --accent: #5eead4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SF Mono", "Fira Code", Consolas, monospace;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ---------- Layout: board + side panel ---------- */
+  #game {
+    display: flex;
+    gap: 24px;
+    padding: 24px;
+  }
+
+  #board {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: block;
+  }
+
+  #side {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 180px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+  }
+
+  .panel h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  .panel .value {
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  #next {
+    display: block;
+    margin: 0 auto;
+  }
+
+  #controls {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.9;
+  }
+
+  #controls b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ---------- Overlays (game over / pause) ---------- */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 15, 18, 0.88);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    border-radius: 6px;
+    text-align: center;
+  }
+
+  #overlay.visible { display: flex; }
+
+  #overlay h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  #overlay p {
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  #restart {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 10px 24px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  #restart:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+</style>
+</head>
+<body>
+
+<div id="game">
+  <div style="position: relative;">
+    <canvas id="board" width="300" height="600"></canvas>
+    <div id="overlay">
+      <h1 id="overlay-title">Fin del juego</h1>
+      <p>Pulsa Enter o el botón para reiniciar</p>
+      <button id="restart">Reiniciar</button>
+    </div>
+  </div>
+
+  <div id="side">
+    <div class="panel">
+      <h2>Siguiente</h2>
+      <canvas id="next" width="120" height="80"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Puntuación</h2>
+      <div class="value" id="score">0</div>
+    </div>
+    <div class="panel">
+      <h2>Nivel</h2>
+      <div class="value" id="level">1</div>
+    </div>
+    <div class="panel">
+      <h2>Líneas</h2>
+      <div class="value" id="lines">0</div>
+    </div>
+    <div class="panel" id="controls">
+      <h2>Controles</h2>
+      <b>← →</b> mover<br>
+      <b>↑</b> rotar<br>
+      <b>↓</b> bajar<br>
+      <b>Espacio</b> caída rápida
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+ *  Tetris v0.1 — single file, zero dependencies
+ *  Board: 10x20, SRS rotation with wall kicks, ghost piece,
+ *  7-bag randomizer, level-based gravity, Spanish UI.
+ * ========================================================= */
+
+// ---------- Constants ----------
+const COLS = 10;
+const ROWS = 20;
+const CELL = 30; // canvas cell size in px
+
+// Base drop interval (ms) at level 1; decreases every level.
+const BASE_DROP_INTERVAL = 800;
+
+// Points per line-clear count (single/double/triple/tetris), x level.
+const SCORE_TABLE = [0, 100, 300, 500, 800];
+const LINES_PER_LEVEL = 10;
+
+// ---------- Tetromino definitions (SRS spawn states) ----------
+// Each piece is defined by its 4 rotation states as coordinate lists,
+// generated from a base matrix so rotation math stays consistent.
+const PIECES = {
+  I: { color: "#22d3ee", matrix: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
+  O: { color: "#facc15", matrix: [[1,1],[1,1]] },
+  T: { color: "#c084fc", matrix: [[0,1,0],[1,1,1],[0,0,0]] },
+  S: { color: "#4ade80", matrix: [[0,1,1],[1,1,0],[0,0,0]] },
+  Z: { color: "#f87171", matrix: [[1,1,0],[0,1,1],[0,0,0]] },
+  J: { color: "#60a5fa", matrix: [[1,0,0],[1,1,1],[0,0,0]] },
+  L: { color: "#fb923c", matrix: [[0,0,1],[1,1,1],[0,0,0]] },
+};
+
+// SRS wall-kick tables: kicks attempted in order after a rotation.
+// Keys: piece type + rotation transition (e.g. "JL>>" = JL series clockwise).
+const KICKS = {
+  normal: {
+    "0>1": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+    "1>0": [[0,0],[1,0],[1,-1],[0,2],[1,2]],
+    "1>2": [[0,0],[1,0],[1,-1],[0,2],[1,2]],
+    "2>1": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+    "2>3": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+    "3>2": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+    "3>0": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+    "0>3": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+  },
+  I: {
+    "0>1": [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
+    "1>0": [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
+    "1>2": [[0,0],[-1,0],[2,0],[-1,2],[2,-1]],
+    "2>1": [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
+    "2>3": [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
+    "3>2": [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
+    "3>0": [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
+    "0>3": [[0,0],[-1,0],[2,0],[-1,2],[2,-1]],
+  },
+};
+
+// ---------- Game state ----------
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const nextCanvas = document.getElementById("next");
+const nextCtx = nextCanvas.getContext("2d");
+const overlay = document.getElementById("overlay");
+const overlayTitle = document.getElementById("overlay-title");
+
+let board;        // ROWS x COLS grid of null or color strings
+let current;      // active piece {type, matrix, x, y, rot}
+let nextType;     // preview piece type
+let bag;          // 7-bag randomizer queue
+let score, level, lines;
+let dropCounter, dropInterval;
+let lastTime;
+let gameOver;
+let requestAnimationFrameId;
+
+// ---------- Utility: matrix helpers ----------
+
+// Rotate an NxN matrix clockwise.
+function rotateCW(matrix) {
+  const n = matrix.length;
+  const result = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      result[c][n - 1 - r] = matrix[r][c];
+  return result;
+}
+
+// Rotate counter-clockwise (used for state restore on failed kick).
+function rotateCCW(matrix) {
+  const n = matrix.length;
+  const result = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      result[n - 1 - c][r] = matrix[r][c];
+  return result;
+}
+
+// Extract occupied cell coordinates of a matrix relative to its origin.
+function cellsOf(matrix) {
+  const cells = [];
+  for (let r = 0; r < matrix.length; r++)
+    for (let c = 0; c < matrix.length; c++)
+      if (matrix[r][c]) cells.push([r, c]);
+  return cells;
+}
+
+// ---------- 7-bag randomizer ----------
+// Guarantees all 7 pieces appear once per "bag" before repeats,
+// matching modern Tetris randomization.
+function refillBag() {
+  const types = Object.keys(PIECES);
+  for (let i = types.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [types[i], types[j]] = [types[j], types[i]];
+  }
+  bag.push(...types);
+}
+
+function nextPieceType() {
+  if (bag.length === 0) refillBag();
+  return bag.shift();
+}
+
+// ---------- Piece creation & collision ----------
+function createPiece(type) {
+  const def = PIECES[type];
+  return {
+    type,
+    matrix: def.matrix.map(row => row.slice()),
+    color: def.color,
+    x: Math.floor((COLS - def.matrix.length) / 2),
+    y: type === "I" ? 0 : 1, // spawn just below the top edge
+    rot: 0,
+  };
+}
+
+// True if any cell of `matrix` placed at (x, y) collides with the
+// board walls, floor, or settled blocks.
+function collides(matrix, x, y) {
+  for (const [r, c] of cellsOf(matrix)) {
+    const bx = x + c;
+    const by = y + r;
+    if (bx < 0 || bx >= COLS || by >= ROWS) return true;
+    if (by >= 0 && board[by][bx]) return true;
+  }
+  return false;
+}
+
+// ---------- Rotation with SRS wall kicks ----------
+function rotate(dir) {
+  const rotated = dir > 0 ? rotateCW(current.matrix) : rotateCCW(current.matrix);
+  const from = current.rot;
+  const to = (from + (dir > 0 ? 1 : 3)) % 4;
+
+  // O piece never kicks (rotation is a no-op visually).
+  const table = current.type === "I" ? KICKS.I : KICKS.normal;
+  const key = dir > 0 ? `${from}>${to}` : `${to}>${from}`;
+  const kicks = current.type === "O" ? [[0, 0]] : table[key];
+
+  for (const [dx, dy] of kicks) {
+    // SRS tables use y-up convention; canvas y grows downward, so invert.
+    const nx = current.x + dx;
+    const ny = current.y - dy;
+    if (!collides(rotated, nx, ny)) {
+      current.matrix = rotated;
+      current.x = nx;
+      current.y = ny;
+      current.rot = to;
+      return;
+    }
+  }
+  // All kicks failed: rotation is cancelled.
+}
+
+// ---------- Movement ----------
+function move(dx) {
+  if (!collides(current.matrix, current.x + dx, current.y)) {
+    current.x += dx;
+  }
+}
+
+function softDrop() {
+  if (!collides(current.matrix, current.x, current.y + 1)) {
+    current.y++;
+    score += 1; // small reward per manual soft drop
+    updateHUD();
+    dropCounter = 0;
+  } else {
+    lockPiece();
+  }
+}
+
+function hardDrop() {
+  let distance = 0;
+  while (!collides(current.matrix, current.x, current.y + 1)) {
+    current.y++;
+    distance++;
+  }
+  score += distance * 2; // hard drop reward
+  updateHUD();
+  lockPiece();
+}
+
+// ---------- Locking, clearing, spawning ----------
+function lockPiece() {
+  for (const [r, c] of cellsOf(current.matrix)) {
+    const by = current.y + r;
+    const bx = current.x + c;
+    if (by >= 0) board[by][bx] = current.color;
+  }
+
+  clearLines();
+  spawn();
+
+  // If the fresh piece immediately collides, the stack reaches the top.
+  if (collides(current.matrix, current.x, current.y)) {
+    endGame();
+  }
+}
+
+// Find and remove completed rows, update score/level.
+function clearLines() {
+  const full = [];
+  for (let r = 0; r < ROWS; r++) {
+    if (board[r].every(cell => cell !== null)) full.push(r);
+  }
+
+  if (full.length === 0) return;
+
+  // Remove full rows, splice in empty rows at the top.
+  for (const r of full) {
+    board.splice(r, 1);
+    board.unshift(Array(COLS).fill(null));
+  }
+
+  lines += full.length;
+  score += SCORE_TABLE[full.length] * level;
+
+  // Level up every 10 lines; gravity speeds up each level.
+  level = Math.floor(lines / LINES_PER_LEVEL) + 1;
+  dropInterval = Math.max(60, BASE_DROP_INTERVAL - (level - 1) * 70);
+  updateHUD();
+}
+
+function spawn() {
+  current = createPiece(nextType);
+  nextType = nextPieceType();
+  drawNext();
+  dropCounter = 0;
+}
+
+// ---------- Ghost piece ----------
+// Where the piece would land if dropped straight down.
+function ghostY() {
+  let y = current.y;
+  while (!collides(current.matrix, current.x, y + 1)) y++;
+  return y;
+}
+
+// ---------- Rendering ----------
+function drawCell(context, x, y, color, size) {
+  context.fillStyle = color;
+  context.fillRect(x * size, y * size, size, size);
+  // Subtle inner highlight for depth.
+  context.fillStyle = "rgba(255,255,255,0.12)";
+  context.fillRect(x * size, y * size, size, 3);
+  context.fillStyle = "rgba(0,0,0,0.25)";
+  context.fillRect(x * size, y * size + size - 3, size, 3);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Faint grid lines for board orientation.
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+  for (let c = 1; c < COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(c * CELL, 0);
+    ctx.lineTo(c * CELL, ROWS * CELL);
+    ctx.stroke();
+  }
+  for (let r = 1; r < ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * CELL);
+    ctx.lineTo(COLS * CELL, r * CELL);
+    ctx.stroke();
+  }
+
+  // Settled blocks.
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (board[r][c]) drawCell(ctx, c, r, board[r][c], CELL);
+
+  if (!gameOver) {
+    // Ghost piece (semi-transparent silhouette of the landing spot).
+    const gy = ghostY();
+    if (gy !== current.y) {
+      for (const [r, c] of cellsOf(current.matrix)) {
+        ctx.fillStyle = "rgba(255,255,255,0.10)";
+        ctx.fillRect((current.x + c) * CELL, (gy + r) * CELL, CELL, CELL);
+        ctx.strokeStyle = "rgba(255,255,255,0.20)";
+        ctx.strokeRect((current.x + c) * CELL + 0.5, (gy + r) * CELL + 0.5, CELL - 1, CELL - 1);
+      }
+    }
+
+    // Active piece.
+    for (const [r, c] of cellsOf(current.matrix)) {
+      const by = current.y + r;
+      if (by >= 0) drawCell(ctx, current.x + c, by, current.color, CELL);
+    }
+  }
+}
+
+function drawNext() {
+  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  const matrix = PIECES[nextType].matrix;
+  const cells = cellsOf(matrix);
+  // Center the preview within the next-piece canvas.
+  const size = 20;
+  const minX = Math.min(...cells.map(([, c]) => c));
+  const maxX = Math.max(...cells.map(([, c]) => c));
+  const minY = Math.min(...cells.map(([r]) => r));
+  const maxY = Math.max(...cells.map(([r]) => r));
+  const w = maxX - minX + 1, h = maxY - minY + 1;
+  const offX = (nextCanvas.width - w * size) / 2 - minX * size;
+  const offY = (nextCanvas.height - h * size) / 2 - minY * size;
+
+  nextCtx.save();
+  nextCtx.translate(offX, offY);
+  for (const [r, c] of cells) drawCell(nextCtx, c, r, PIECES[nextType].color, size);
+  nextCtx.restore();
+}
+
+// ---------- HUD & overlay ----------
+function updateHUD() {
+  document.getElementById("score").textContent = score;
+  document.getElementById("level").textContent = level;
+  document.getElementById("lines").textContent = lines;
+}
+
+function showOverlay(title) {
+  overlayTitle.textContent = title;
+  overlay.classList.add("visible");
+}
+
+function hideOverlay() {
+  overlay.classList.remove("visible");
+}
+
+// ---------- Game lifecycle ----------
+function reset() {
+  board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  bag = [];
+  score = 0;
+  level = 1;
+  lines = 0;
+  dropInterval = BASE_DROP_INTERVAL;
+  dropCounter = 0;
+  gameOver = false;
+  hideOverlay();
+  updateHUD();
+  nextType = nextPieceType();
+  spawn();
+}
+
+function endGame() {
+  gameOver = true;
+  showOverlay("Fin del juego");
+}
+
+// ---------- Main loop ----------
+function update(time = 0) {
+  const delta = time - lastTime;
+  lastTime = time;
+  dropCounter += delta;
+
+  if (!gameOver && dropCounter > dropInterval) {
+    // Gravity: try to move down, lock if blocked.
+    if (!collides(current.matrix, current.x, current.y + 1)) {
+      current.y++;
+    } else {
+      lockPiece();
+    }
+    dropCounter = 0;
+  }
+
+  draw();
+  requestAnimationFrameId = requestAnimationFrame(update);
+}
+
+// ---------- Input ----------
+document.addEventListener("keydown", (e) => {
+  if (gameOver) {
+    if (e.key === "Enter") reset();
+    return;
+  }
+  switch (e.key) {
+    case "ArrowLeft":  e.preventDefault(); move(-1); break;
+    case "ArrowRight": e.preventDefault(); move(1);  break;
+    case "ArrowDown":  e.preventDefault(); softDrop(); break;
+    case "ArrowUp":    e.preventDefault(); if (e.repeat) return; rotate(1);  break;
+    case " ":          e.preventDefault(); if (e.repeat) return; hardDrop(); break;
+  }
+});
+
+const restartBtn = document.getElementById("restart");
+restartBtn.addEventListener("click", () => {
+  reset();
+  restartBtn.blur();
+});
+
+// ---------- Boot ----------
+reset();
+lastTime = 0;
+requestAnimationFrameId = requestAnimationFrame(update);
+</script>
+</body>
+</html>
