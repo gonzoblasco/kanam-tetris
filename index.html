@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tetris v0.1</title>
+<title>Tetris v0.2</title>
 <style>
   /* ---------- Dark minimal theme ---------- */
   :root {
@@ -44,32 +44,39 @@
   #side {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    width: 180px;
+    gap: 10px;
+    width: 200px;
+  }
+
+  /* Hold + next previews sit side by side to keep the column compact. */
+  #previews {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
 
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 12px;
+    padding: 10px;
   }
 
   .panel h2 {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-dim);
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
 
   .panel .value {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
   }
 
-  #next {
+  .panel canvas {
     display: block;
     margin: 0 auto;
   }
@@ -77,7 +84,7 @@
   #controls {
     font-size: 11px;
     color: var(--text-dim);
-    line-height: 1.9;
+    line-height: 1.8;
   }
 
   #controls b {
@@ -137,15 +144,25 @@
     <canvas id="board" width="300" height="600"></canvas>
     <div id="overlay">
       <h1 id="overlay-title">Fin del juego</h1>
-      <p>Pulsa Enter o el botón para reiniciar</p>
+      <p id="overlay-sub">Pulsa Enter o el botón para reiniciar</p>
       <button id="restart">Reiniciar</button>
     </div>
   </div>
 
   <div id="side">
+    <div id="previews">
+      <div class="panel">
+        <h2>Reserva</h2>
+        <canvas id="hold" width="80" height="60"></canvas>
+      </div>
+      <div class="panel">
+        <h2>Siguiente</h2>
+        <canvas id="next" width="80" height="60"></canvas>
+      </div>
+    </div>
     <div class="panel">
-      <h2>Siguiente</h2>
-      <canvas id="next" width="120" height="80"></canvas>
+      <h2>Récord</h2>
+      <div class="value" id="hiscore">0</div>
     </div>
     <div class="panel">
       <h2>Puntuación</h2>
@@ -162,9 +179,11 @@
     <div class="panel" id="controls">
       <h2>Controles</h2>
       <b>← →</b> mover<br>
-      <b>↑</b> rotar<br>
       <b>↓</b> bajar<br>
-      <b>Espacio</b> caída rápida
+      <b>↑</b> rotar<br>
+      <b>Espacio</b> caída rápida<br>
+      <b>C</b> reservar pieza<br>
+      <b>P / Esc</b> pausa
     </div>
   </div>
 </div>
@@ -173,9 +192,11 @@
 "use strict";
 
 /* =========================================================
- *  Tetris v0.1 — single file, zero dependencies
+ *  Tetris v0.2 — single file, zero dependencies
  *  Board: 10x20, SRS rotation with wall kicks, ghost piece,
  *  7-bag randomizer, level-based gravity, Spanish UI.
+ *  v0.2 adds: hold slot, lock delay, DAS/ARR, line-clear
+ *  flash, pause, and a localStorage high score.
  * ========================================================= */
 
 // ---------- Constants ----------
@@ -189,6 +210,15 @@ const BASE_DROP_INTERVAL = 800;
 // Points per line-clear count (single/double/triple/tetris), x level.
 const SCORE_TABLE = [0, 100, 300, 500, 800];
 const LINES_PER_LEVEL = 10;
+
+// ---------- v0.2 tuning ----------
+const LOCK_DELAY_MS = 500;   // grace period before a grounded piece locks
+const MAX_LOCK_RESETS = 15;  // cap on lock-delay resets per piece (anti-stall)
+const CLEAR_FLASH_MS = 180;  // line-clear flash duration; loop freezes during it
+const DAS_MS = 170;          // delayed auto shift: hold delay before repeating
+const ARR_MS = 50;           // auto repeat rate once DAS has charged
+const PREVIEW_CELL = 16;     // cell size used by the hold/next previews
+const HIGH_SCORE_KEY = "tetris.highscore";
 
 // ---------- Tetromino definitions (SRS spawn states) ----------
 // Each piece is defined by its 4 rotation states as coordinate lists,
@@ -233,8 +263,13 @@ const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const nextCanvas = document.getElementById("next");
 const nextCtx = nextCanvas.getContext("2d");
+const holdCanvas = document.getElementById("hold");
+const holdCtx = holdCanvas.getContext("2d");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlay-title");
+const overlaySub = document.getElementById("overlay-sub");
+const restartBtn = document.getElementById("restart");
+const hiscoreEl = document.getElementById("hiscore");
 
 let board;        // ROWS x COLS grid of null or color strings
 let current;      // active piece {type, matrix, x, y, rot}
@@ -245,6 +280,21 @@ let dropCounter, dropInterval;
 let lastTime;
 let gameOver;
 let requestAnimationFrameId;
+
+// v0.2 state
+let holdType;     // piece type parked in reserve, or null when empty
+let holdUsed;     // true once the hold slot is spent for the current piece
+let lockTimer;    // ms spent grounded without downward progress
+let lockResets;   // lock-delay resets consumed by the current piece
+let lowestY;      // lowest row the current piece has reached
+let clearing;     // { rows, timer } while the clear flash plays, else null
+let paused;       // true while the pause overlay is up
+let moveDir;      // -1 / 0 / 1 — horizontal direction currently held down
+let dasTimer;     // ms since the direction was pressed
+let arrTimer;     // ms accumulator once DAS has charged
+let dasCharged;   // true once the initial DAS delay has elapsed
+let highScore;    // best score ever, persisted in localStorage
+let recordBeaten; // true if the running game has beaten the stored record
 
 // ---------- Utility: matrix helpers ----------
 
@@ -321,13 +371,14 @@ function collides(matrix, x, y) {
 
 // ---------- Rotation with SRS wall kicks ----------
 function rotate(dir) {
+  if (clearing) return;
   const rotated = dir > 0 ? rotateCW(current.matrix) : rotateCCW(current.matrix);
   const from = current.rot;
   const to = (from + (dir > 0 ? 1 : 3)) % 4;
 
   // O piece never kicks (rotation is a no-op visually).
   const table = current.type === "I" ? KICKS.I : KICKS.normal;
-  const key = dir > 0 ? `${from}>${to}` : `${to}>${from}`;
+  const key = `${from}>${to}`;
   const kicks = current.type === "O" ? [[0, 0]] : table[key];
 
   for (const [dx, dy] of kicks) {
@@ -339,31 +390,46 @@ function rotate(dir) {
       current.x = nx;
       current.y = ny;
       current.rot = to;
+      resetLockDelay(); // a successful rotate buys more time on the ground
       return;
     }
   }
   // All kicks failed: rotation is cancelled.
 }
 
+// ---------- Lock delay ----------
+// True when the piece cannot fall any further.
+function grounded() {
+  return collides(current.matrix, current.x, current.y + 1);
+}
+
+// Restart the lock countdown after a successful move or rotation.
+// Each piece gets at most MAX_LOCK_RESETS resets, so it cannot stall forever.
+function resetLockDelay() {
+  if (!grounded() || lockResets >= MAX_LOCK_RESETS) return;
+  lockTimer = 0;
+  lockResets++;
+}
+
 // ---------- Movement ----------
 function move(dx) {
-  if (!collides(current.matrix, current.x + dx, current.y)) {
-    current.x += dx;
-  }
+  if (clearing) return;
+  if (collides(current.matrix, current.x + dx, current.y)) return;
+  current.x += dx;
+  resetLockDelay();
 }
 
 function softDrop() {
-  if (!collides(current.matrix, current.x, current.y + 1)) {
-    current.y++;
-    score += 1; // small reward per manual soft drop
-    updateHUD();
-    dropCounter = 0;
-  } else {
-    lockPiece();
-  }
+  if (grounded()) return; // the lock delay decides when it settles
+  current.y++;
+  score += 1; // small reward per manual soft drop
+  updateHUD();
+  checkHighScore();
+  dropCounter = 0;
 }
 
 function hardDrop() {
+  if (clearing) return;
   let distance = 0;
   while (!collides(current.matrix, current.x, current.y + 1)) {
     current.y++;
@@ -371,7 +437,33 @@ function hardDrop() {
   }
   score += distance * 2; // hard drop reward
   updateHUD();
-  lockPiece();
+  checkHighScore();
+  lockPiece(); // hard drop always locks at once, bypassing the lock delay
+}
+
+// ---------- Hold slot ----------
+// Park the active piece in reserve and bring in the held one (or the next
+// piece on the first hold). One hold per locked piece.
+function holdPiece() {
+  if (holdUsed || gameOver || paused || clearing) return;
+
+  const incoming = holdType; // null the first time around
+  holdType = current.type;
+  holdUsed = true;
+
+  if (incoming) {
+    current = createPiece(incoming);
+  } else {
+    current = createPiece(nextType);
+    nextType = nextPieceType();
+    drawNext();
+  }
+
+  resetLockState();
+  drawHold();
+
+  // A swap can land on top of the stack, same as a fresh spawn.
+  if (collides(current.matrix, current.x, current.y)) endGame();
 }
 
 // ---------- Locking, clearing, spawning ----------
@@ -382,7 +474,28 @@ function lockPiece() {
     if (by >= 0) board[by][bx] = current.color;
   }
 
-  clearLines();
+  const full = findFullRows();
+  if (full.length > 0) {
+    // Freeze the loop and flash the rows before actually removing them.
+    clearing = { rows: full, timer: 0 };
+  } else {
+    afterLock();
+  }
+}
+
+function findFullRows() {
+  const full = [];
+  for (let r = 0; r < ROWS; r++) {
+    if (board[r].every(cell => cell !== null)) full.push(r);
+  }
+  return full;
+}
+
+// Spawn the next piece once the board has settled (post-clear, or no clear).
+function afterLock() {
+  holdUsed = false; // the reserve refills once the next piece is in play
+  drawHold();
+
   spawn();
 
   // If the fresh piece immediately collides, the stack reaches the top.
@@ -391,15 +504,8 @@ function lockPiece() {
   }
 }
 
-// Find and remove completed rows, update score/level.
-function clearLines() {
-  const full = [];
-  for (let r = 0; r < ROWS; r++) {
-    if (board[r].every(cell => cell !== null)) full.push(r);
-  }
-
-  if (full.length === 0) return;
-
+// Remove the flashed rows, update score/level.
+function applyClear(full) {
   // Remove full rows, splice in empty rows at the top.
   for (const r of full) {
     board.splice(r, 1);
@@ -413,13 +519,22 @@ function clearLines() {
   level = Math.floor(lines / LINES_PER_LEVEL) + 1;
   dropInterval = Math.max(60, BASE_DROP_INTERVAL - (level - 1) * 70);
   updateHUD();
+  checkHighScore();
+}
+
+// Reset the per-piece lock countdown and gravity accumulator.
+function resetLockState() {
+  lockTimer = 0;
+  lockResets = 0;
+  lowestY = current.y;
+  dropCounter = 0;
 }
 
 function spawn() {
   current = createPiece(nextType);
   nextType = nextPieceType();
   drawNext();
-  dropCounter = 0;
+  resetLockState();
 }
 
 // ---------- Ghost piece ----------
@@ -465,7 +580,18 @@ function draw() {
     for (let c = 0; c < COLS; c++)
       if (board[r][c]) drawCell(ctx, c, r, board[r][c], CELL);
 
-  if (!gameOver) {
+  // Line-clear flash: the completed rows blink white, fading out, while the
+  // loop is frozen. Drawn over the settled blocks but under the overlay.
+  if (clearing) {
+    const t = Math.min(1, clearing.timer / CLEAR_FLASH_MS);
+    ctx.fillStyle = `rgba(255,255,255,${(0.9 * (1 - t)).toFixed(3)})`;
+    for (const r of clearing.rows) {
+      ctx.fillRect(0, r * CELL, COLS * CELL, CELL);
+    }
+  }
+
+  // No active piece while the board is clearing or the game is over.
+  if (!gameOver && !clearing) {
     // Ghost piece (semi-transparent silhouette of the landing spot).
     const gy = ghostY();
     if (gy !== current.y) {
@@ -485,24 +611,35 @@ function draw() {
   }
 }
 
-function drawNext() {
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
-  const matrix = PIECES[nextType].matrix;
-  const cells = cellsOf(matrix);
-  // Center the preview within the next-piece canvas.
-  const size = 20;
+// Draw a piece type centered inside a small preview canvas.
+function drawPreview(context, target, type, size) {
+  context.clearRect(0, 0, target.width, target.height);
+  const cells = cellsOf(PIECES[type].matrix);
   const minX = Math.min(...cells.map(([, c]) => c));
   const maxX = Math.max(...cells.map(([, c]) => c));
   const minY = Math.min(...cells.map(([r]) => r));
   const maxY = Math.max(...cells.map(([r]) => r));
   const w = maxX - minX + 1, h = maxY - minY + 1;
-  const offX = (nextCanvas.width - w * size) / 2 - minX * size;
-  const offY = (nextCanvas.height - h * size) / 2 - minY * size;
+  const offX = (target.width - w * size) / 2 - minX * size;
+  const offY = (target.height - h * size) / 2 - minY * size;
 
-  nextCtx.save();
-  nextCtx.translate(offX, offY);
-  for (const [r, c] of cells) drawCell(nextCtx, c, r, PIECES[nextType].color, size);
-  nextCtx.restore();
+  context.save();
+  context.translate(offX, offY);
+  for (const [r, c] of cells) drawCell(context, c, r, PIECES[type].color, size);
+  context.restore();
+}
+
+function drawNext() {
+  drawPreview(nextCtx, nextCanvas, nextType, PREVIEW_CELL);
+}
+
+// The reserved piece is dimmed while the hold slot is spent.
+function drawHold() {
+  holdCtx.clearRect(0, 0, holdCanvas.width, holdCanvas.height);
+  if (!holdType) return;
+  holdCtx.globalAlpha = holdUsed ? 0.28 : 1;
+  drawPreview(holdCtx, holdCanvas, holdType, PREVIEW_CELL);
+  holdCtx.globalAlpha = 1;
 }
 
 // ---------- HUD & overlay ----------
@@ -510,15 +647,50 @@ function updateHUD() {
   document.getElementById("score").textContent = score;
   document.getElementById("level").textContent = level;
   document.getElementById("lines").textContent = lines;
+  hiscoreEl.textContent = highScore;
 }
 
-function showOverlay(title) {
+// `subtitle` may be "" to hide the line; `withButton` toggles the restart
+// button (hidden while paused, since P/Esc resumes).
+function showOverlay(title, subtitle, withButton) {
   overlayTitle.textContent = title;
+  overlaySub.textContent = subtitle;
+  overlaySub.style.display = subtitle ? "block" : "none";
+  restartBtn.style.display = withButton ? "inline-block" : "none";
   overlay.classList.add("visible");
 }
 
 function hideOverlay() {
   overlay.classList.remove("visible");
+}
+
+// ---------- High score (localStorage) ----------
+// Storage can throw (private mode, sandboxed frames), so never let it
+// take the game down.
+function loadHighScore() {
+  try {
+    const stored = parseInt(localStorage.getItem(HIGH_SCORE_KEY), 10);
+    return Number.isFinite(stored) && stored > 0 ? stored : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function saveHighScore() {
+  try {
+    localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+  } catch (e) {
+    /* storage unavailable — keep the in-memory record only */
+  }
+}
+
+// Live HUD only: the record display tracks the running score, but the
+// value is persisted once, in endGame().
+function checkHighScore() {
+  if (score <= highScore) return;
+  highScore = score;
+  recordBeaten = true;
+  hiscoreEl.textContent = highScore;
 }
 
 // ---------- Game lifecycle ----------
@@ -531,31 +703,133 @@ function reset() {
   dropInterval = BASE_DROP_INTERVAL;
   dropCounter = 0;
   gameOver = false;
+
+  // v0.2 state
+  holdType = null;
+  holdUsed = false;
+  clearing = null;
+  paused = false;
+  recordBeaten = false;
+  clearMoveState();
+  lockTimer = 0;
+  lockResets = 0;
+  lowestY = 0;
+
   hideOverlay();
   updateHUD();
+  drawHold();
   nextType = nextPieceType();
   spawn();
 }
 
 function endGame() {
   gameOver = true;
-  showOverlay("Fin del juego");
+  clearMoveState();
+  checkHighScore();
+  saveHighScore(); // the only place the record is written to storage
+  const subtitle = recordBeaten
+    ? `¡Nuevo récord! ${highScore}`
+    : `Récord: ${highScore}`;
+  showOverlay("Fin del juego", subtitle, true);
+}
+
+// ---------- Pause ----------
+function togglePause() {
+  if (gameOver) return;
+  paused = !paused;
+  if (paused) {
+    clearMoveState(); // don't resume mid-DAS when the key is long gone
+    showOverlay("Pausa", "Pulsa P o Escape para continuar", false);
+  } else {
+    hideOverlay();
+    lastTime = performance.now(); // avoid a huge delta on the first frame back
+  }
+}
+
+// ---------- Horizontal auto-shift (DAS/ARR) ----------
+// Own timers instead of OS key repeat: one immediate step on press, then a
+// repeat after DAS_MS, then every ARR_MS while the key is held.
+function startMove(dir) {
+  moveDir = dir;
+  dasTimer = 0;
+  arrTimer = 0;
+  dasCharged = false;
+  move(dir); // immediate step on press
+}
+
+function clearMoveState() {
+  moveDir = 0;
+  dasTimer = 0;
+  arrTimer = 0;
+  dasCharged = false;
+}
+
+function updateDAS(delta) {
+  if (moveDir === 0) return;
+  if (!dasCharged) {
+    dasTimer += delta;
+    if (dasTimer >= DAS_MS) {
+      dasCharged = true;
+      arrTimer = 0;
+      move(moveDir);
+    }
+    return;
+  }
+  arrTimer += delta;
+  while (arrTimer >= ARR_MS) {
+    arrTimer -= ARR_MS;
+    move(moveDir);
+  }
+}
+
+// ---------- Per-frame simulation ----------
+function updatePlaying(delta) {
+  // Reaching a new lowest row refreshes the lock budget: the cap only
+  // limits wiggling in place, not legitimate descent.
+  if (current.y > lowestY) {
+    lowestY = current.y;
+    lockTimer = 0;
+    lockResets = 0;
+  }
+
+  if (grounded()) {
+    // No downward progress: run the lock countdown instead of gravity.
+    lockTimer += delta;
+    if (lockTimer >= LOCK_DELAY_MS) {
+      lockPiece();
+      return;
+    }
+  } else {
+    dropCounter += delta;
+    if (dropCounter > dropInterval) {
+      current.y++;
+      dropCounter = 0;
+    }
+  }
+
+  updateDAS(delta);
 }
 
 // ---------- Main loop ----------
 function update(time = 0) {
-  const delta = time - lastTime;
+  // Clamp so a backgrounded tab or a long frame can't fast-forward the
+  // lock delay or the clear flash.
+  const delta = Math.max(0, Math.min(time - lastTime, 100));
   lastTime = time;
-  dropCounter += delta;
 
-  if (!gameOver && dropCounter > dropInterval) {
-    // Gravity: try to move down, lock if blocked.
-    if (!collides(current.matrix, current.x, current.y + 1)) {
-      current.y++;
+  if (!gameOver && !paused) {
+    if (clearing) {
+      // The clear flash freezes the game; the rows vanish when it ends.
+      clearing.timer += delta;
+      if (clearing.timer >= CLEAR_FLASH_MS) {
+        const rows = clearing.rows;
+        clearing = null;
+        applyClear(rows);
+        afterLock();
+      }
     } else {
-      lockPiece();
+      updatePlaying(delta);
     }
-    dropCounter = 0;
   }
 
   draw();
@@ -564,28 +838,64 @@ function update(time = 0) {
 
 // ---------- Input ----------
 document.addEventListener("keydown", (e) => {
+  // Normalise once so "Escape"/"Esc", "p"/"P" and arrows all compare alike.
+  const key = e.key.toLowerCase();
+
   if (gameOver) {
-    if (e.key === "Enter") reset();
+    if (key === "enter") {
+      e.preventDefault();
+      reset();
+    }
     return;
   }
-  switch (e.key) {
-    case "ArrowLeft":  e.preventDefault(); move(-1); break;
-    case "ArrowRight": e.preventDefault(); move(1);  break;
-    case "ArrowDown":  e.preventDefault(); softDrop(); break;
-    case "ArrowUp":    e.preventDefault(); if (e.repeat) return; rotate(1);  break;
-    case " ":          e.preventDefault(); if (e.repeat) return; hardDrop(); break;
+
+  // Pause toggles from anywhere else.
+  if (key === "p" || key === "escape") {
+    e.preventDefault();
+    if (!e.repeat) togglePause();
+    return;
+  }
+  if (paused) return;
+  if (clearing) return; // the flash owns the locked piece; ignore game input
+
+  if (key === "c") {
+    if (!e.repeat) holdPiece();
+    return;
+  }
+
+  switch (key) {
+    case "arrowleft":
+      e.preventDefault();
+      if (!e.repeat) startMove(-1); // OS repeat deliberately ignored
+      break;
+    case "arrowright":
+      e.preventDefault();
+      if (!e.repeat) startMove(1);
+      break;
+    case "arrowdown": e.preventDefault(); softDrop(); break;
+    case "arrowup":   e.preventDefault(); if (!e.repeat) rotate(1);  break;
+    case " ":         e.preventDefault(); if (!e.repeat) hardDrop(); break;
   }
 });
 
-const restartBtn = document.getElementById("restart");
+document.addEventListener("keyup", (e) => {
+  const key = e.key.toLowerCase();
+  if (key === "arrowleft" && moveDir === -1) moveDir = 0;
+  if (key === "arrowright" && moveDir === 1) moveDir = 0;
+});
+
+// Releasing focus mid-hold would otherwise leave the piece sliding.
+window.addEventListener("blur", clearMoveState);
+
 restartBtn.addEventListener("click", () => {
   reset();
   restartBtn.blur();
 });
 
 // ---------- Boot ----------
+highScore = loadHighScore();
 reset();
-lastTime = 0;
+lastTime = performance.now();
 requestAnimationFrameId = requestAnimationFrame(update);
 </script>
 </body>
