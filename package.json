@@ -1,0 +1,11 @@
+{
+  "name": "kanam-tetris",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Tetris clasico en vanilla JS: modulos ES, core puro y testeable, cero dependencias y cero build.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "serve": "python3 -m http.server 8000"
+  }
+}
