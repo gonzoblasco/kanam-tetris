@@ -3,22 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tetris v0.3</title>
+<title>Tetris v0.4</title>
 <style>
-  /* ---------- Dark minimal theme ---------- */
+  /* ---------- Dark minimal theme, wireframe "cajitas" (v0.4) ---------- */
   :root {
-    --bg: #0d0f12;
-    --panel: #161a20;
-    --border: #2a3038;
+    --bg: #0a0c0f;
+    --panel: #0f1217;
+    --border: #222a36;
+    --board-border: #3a4658;
     --text: #d7dde5;
-    --text-dim: #7b8494;
+    --text-dim: #848d9e;
     --accent: #5eead4;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* Subtle dot field behind everything; it frames the two flat panels
+     and never competes with the board dots (canvas) or the wireframe. */
   body {
     background: var(--bg);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 22px 22px;
     color: var(--text);
     font-family: "SF Mono", "Fira Code", Consolas, monospace;
     min-height: 100vh;
@@ -30,15 +35,25 @@
   /* ---------- Layout: board + side panel ---------- */
   #game {
     display: flex;
-    gap: 24px;
+    gap: 28px;
     padding: 24px;
+  }
+
+  /* The board container tilts like a slab resting on the table; the
+     canvas itself stays an undistorted rect grid inside (no column
+     misreading). The tilt is a perspective hint, not a bend. */
+  #board-wrap {
+    perspective: 1000px;
   }
 
   #board {
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    border: 1px solid var(--board-border);
+    border-radius: 8px;
     display: block;
+    transform: rotateX(12deg);
+    transform-origin: 50% 20%;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55), 0 3px 10px rgba(0, 0, 0, 0.4);
   }
 
   #side {
@@ -58,7 +73,7 @@
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 10px;
   }
 
@@ -74,6 +89,18 @@
   .panel .value {
     font-size: 20px;
     font-weight: 700;
+  }
+
+  /* Main instrument: the score is the biggest, most readable readout.
+     The rest are support dials: smaller and dimmer. */
+  .panel.primary .value {
+    font-size: 30px;
+    color: var(--accent);
+  }
+
+  .panel.secondary .value {
+    font-size: 16px;
+    color: var(--text-dim);
   }
 
   .panel canvas {
@@ -96,13 +123,13 @@
   #overlay {
     position: absolute;
     inset: 0;
-    background: rgba(13, 15, 18, 0.88);
+    background: rgba(10, 12, 15, 0.86);
     display: none;
     align-items: center;
     justify-content: center;
     flex-direction: column;
     gap: 16px;
-    border-radius: 6px;
+    border-radius: 8px;
     text-align: center;
   }
 
@@ -140,7 +167,7 @@
 <body>
 
 <div id="game">
-  <div style="position: relative;">
+  <div id="board-wrap" style="position: relative;">
     <canvas id="board" width="300" height="600"></canvas>
     <div id="overlay">
       <h1 id="overlay-title">Fin del juego</h1>
@@ -160,19 +187,19 @@
         <canvas id="next" width="80" height="60"></canvas>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel secondary">
       <h2>Récord</h2>
       <div class="value" id="hiscore">0</div>
     </div>
-    <div class="panel">
+    <div class="panel primary">
       <h2>Puntuación</h2>
       <div class="value" id="score">0</div>
     </div>
-    <div class="panel">
+    <div class="panel secondary">
       <h2>Nivel</h2>
       <div class="value" id="level">1</div>
     </div>
-    <div class="panel">
+    <div class="panel secondary">
       <h2>Líneas</h2>
       <div class="value" id="lines">0</div>
     </div>
