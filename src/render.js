@@ -14,10 +14,17 @@
  *  game state and never decides anything about the rules.
  * ========================================================= */
 
-import { COLS, ROWS, CLEAR_FLASH_MS, LOCK_DELAY_MS, PIECES, cellsOf } from "./core.js";
+import { COLS, ROWS, CLEAR_FLASH_MS, LOCK_DELAY_MS, PIECES, cellsOf, NEXT_QUEUE_SIZE } from "./core.js";
 
 export const CELL = 30;       // board cell size in px
-export const PREVIEW_CELL = 16; // cell size used by hold/next previews
+export const PREVIEW_CELL = 16; // cell size used by the hold preview
+const QUEUE_CELL = 11;        // smaller cells for the 4 trailing queue previews
+const QUEUE_SLOT_H = 26;      // vertical pitch of one queue slot
+const NEXT_CELLS = 3;         // rows the next canvas must fit (I is 1 tall, T is 2)
+
+// The announcement floats over the board for this long after a T-spin.
+const ANNOUNCE_MS = 900;
+const BOARD_FRAME = 3;        // px, board border width the pulse rides on
 
 const DOT_ALPHA = 0.06;    // board floor dot intensity
 const GHOST_DASH = [3, 4]; // dash pattern for the ghost outline
@@ -70,12 +77,13 @@ function drawPreview(context, target, type, size) {
 }
 
 /* =========================================================
- *  createRenderer({ canvas, nextCanvas, holdCanvas })
+ *  createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas })
  * ========================================================= */
-export function createRenderer({ canvas, nextCanvas, holdCanvas }) {
+export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas }) {
   const ctx = canvas.getContext("2d");
   const nextCtx = nextCanvas.getContext("2d");
   const holdCtx = holdCanvas.getContext("2d");
+  const queueCtx = queueCanvas ? queueCanvas.getContext("2d") : null;
 
   function drawBoard(state) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -102,10 +110,14 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas }) {
     if (state.clearing) {
       const t = Math.min(1, state.clearing.timer / CLEAR_FLASH_MS);
       const pulse = Math.sin(Math.PI * t); // 0 -> 1 -> 0
-      ctx.fillStyle = `rgba(255,255,255,${(0.05 * pulse).toFixed(3)})`;
-      ctx.strokeStyle = `rgba(255,255,255,${(0.35 + 0.6 * pulse).toFixed(3)})`;
+      // A T-spin clear gets a colored frame instead of white: same wireframe
+      // language, and the event is readable without a label.
+      const spin = state.pendingTSpin && state.pendingTSpin.tspin;
+      const flashColor = spin ? "192,132,252" : "255,255,255";
+      ctx.fillStyle = `rgba(${flashColor},${(0.05 * pulse).toFixed(3)})`;
+      ctx.strokeStyle = `rgba(${flashColor},${(0.35 + 0.6 * pulse).toFixed(3)})`;
       ctx.lineWidth = 2.5;
-      ctx.shadowColor = "rgba(255,255,255,0.9)";
+      ctx.shadowColor = spin ? "rgba(192,132,252,0.9)" : "rgba(255,255,255,0.9)";
       ctx.shadowBlur = 14 * pulse;
       for (const r of state.clearing.rows) {
         ctx.fillRect(0, r * CELL, COLS * CELL, CELL);
@@ -117,6 +129,9 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas }) {
     // No active piece while clearing or after game over.
     const cur = state.current;
     if (!state.gameOver && !state.clearing && cur) drawActivePiece(state, cur);
+
+    // The announcement rides on top of everything: it is the newest event.
+    drawAnnounce(state);
   }
 
   function drawActivePiece(state, cur) {
@@ -156,8 +171,63 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas }) {
     if (lockRatio > 0) ctx.restore();
   }
 
+  // The T-spin announcement: a short label over the board plus a pulse on the
+  // board frame. Chosen over particles or a full-screen banner because it adds
+  // no new visual vocabulary - it is text and one border, same as the rest.
+  function drawAnnounce(state) {
+    const ann = state.announce;
+    if (!ann) return;
+    const age = Date.now() - ann.at;
+    if (age > ANNOUNCE_MS) return;
+    const t = age / ANNOUNCE_MS;
+    const alpha = 1 - t * t; // ease out, so it does not snap off
+
+    // Board frame pulse.
+    ctx.save();
+    ctx.strokeStyle = `rgba(192,132,252,${(0.55 * alpha).toFixed(3)})`;
+    ctx.lineWidth = BOARD_FRAME;
+    ctx.strokeRect(
+      BOARD_FRAME / 2,
+      BOARD_FRAME / 2,
+      canvas.width - BOARD_FRAME,
+      canvas.height - BOARD_FRAME,
+    );
+    ctx.restore();
+
+    // Floating label, centered on the board's upper third.
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = "600 20px 'SF Mono', 'Fira Code', Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#c084fc";
+    ctx.shadowColor = "rgba(192,132,252,0.9)";
+    ctx.shadowBlur = 12;
+    ctx.fillText(ann.text, canvas.width / 2, canvas.height * 0.32 - t * 10);
+    ctx.restore();
+  }
+
   function drawNext(state) {
     drawPreview(nextCtx, nextCanvas, state.nextType, PREVIEW_CELL);
+  }
+
+  // R4: the 4 pieces after `nextType`, cascaded and smaller. The active-adjacent
+  // piece is NOT redrawn here (it is the big "Siguiente" panel), so the queue
+  // shown here starts at index 1.
+  function drawQueue(state) {
+    if (!queueCanvas || !queueCtx) return;
+    queueCtx.clearRect(0, 0, queueCanvas.width, queueCanvas.height);
+    const q = state.queue || [];
+    for (let i = 1; i < Math.min(q.length, NEXT_QUEUE_SIZE); i++) {
+      const type = q[i];
+      if (!type) continue;
+      const slotTop = (i - 1) * QUEUE_SLOT_H;
+      queueCtx.save();
+      queueCtx.translate(30 - 3 * QUEUE_CELL, slotTop + 4);
+      const cells = cellsOf(PIECES[type].matrix);
+      for (const [r, c] of cells) drawCellWire(queueCtx, c, r, PIECES[type].color, QUEUE_CELL);
+      queueCtx.restore();
+    }
   }
 
   // The reserved piece is dimmed while the hold slot is spent.
@@ -173,9 +243,10 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas }) {
     drawBoard(state);
     drawNext(state);
     drawHold(state);
+    drawQueue(state);
   }
 
-  return { draw, drawBoard, drawNext, drawHold };
+  return { draw, drawBoard, drawNext, drawHold, drawQueue };
 }
 
 // Local ghost calculation so the renderer stays free of core internals.

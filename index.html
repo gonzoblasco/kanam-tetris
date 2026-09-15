@@ -70,6 +70,37 @@
     gap: 10px;
   }
 
+  /* The 4 trailing queue pieces are small and dimmer: support information,
+     not the main readout. */
+  #queue-panel canvas {
+    opacity: 0.72;
+  }
+
+  /* Combo counter: only meaningful while a chain is alive, so it is hidden
+     by default and revealed by the .visible class. */
+  #combo {
+    font-size: 14px;
+    color: var(--accent);
+    display: none;
+  }
+
+  #combo.visible { display: block; }
+
+  /* Back-to-back badge: a quiet outlined chip, same wireframe grammar. */
+  #b2b {
+    display: none;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #c084fc;
+    border: 1px solid rgba(192, 132, 252, 0.5);
+    border-radius: 4px;
+    padding: 3px 6px;
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  #b2b.visible { display: block; }
+
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -187,6 +218,10 @@
         <canvas id="next" width="80" height="60"></canvas>
       </div>
     </div>
+    <div class="panel" id="queue-panel">
+      <h2>Cola</h2>
+      <canvas id="queue" width="60" height="104"></canvas>
+    </div>
     <div class="panel secondary">
       <h2>Récord</h2>
       <div class="value" id="hiscore">0</div>
@@ -194,6 +229,8 @@
     <div class="panel primary">
       <h2>Puntuación</h2>
       <div class="value" id="score">0</div>
+      <div id="combo">x2 combo</div>
+      <div id="b2b">BACK-TO-BACK</div>
     </div>
     <div class="panel secondary">
       <h2>Nivel</h2>

@@ -17,6 +17,7 @@ import { loadHighScore, saveHighScore } from "./storage.js";
 const canvas = document.getElementById("board");
 const nextCanvas = document.getElementById("next");
 const holdCanvas = document.getElementById("hold");
+const queueCanvas = document.getElementById("queue");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlay-title");
 const overlaySub = document.getElementById("overlay-sub");
@@ -25,8 +26,10 @@ const hiscoreEl = document.getElementById("hiscore");
 const scoreEl = document.getElementById("score");
 const levelEl = document.getElementById("level");
 const linesEl = document.getElementById("lines");
+const comboEl = document.getElementById("combo");
+const b2bEl = document.getElementById("b2b");
 
-const renderer = createRenderer({ canvas, nextCanvas, holdCanvas });
+const renderer = createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas });
 
 // ---------- HUD & overlay ----------
 function updateHUD(state) {
@@ -34,6 +37,16 @@ function updateHUD(state) {
   levelEl.textContent = state.level;
   linesEl.textContent = state.lines;
   hiscoreEl.textContent = state.highScore;
+
+  // Combo is only shown while a chain is alive (combo >= 1).
+  if (state.combo >= 1) {
+    comboEl.textContent = `x${state.combo + 1} combo`;
+    comboEl.classList.add("visible");
+  } else {
+    comboEl.classList.remove("visible");
+  }
+
+  b2bEl.classList.toggle("visible", state.b2b === true);
 }
 
 // `subtitle` may be "" to hide the line; `withButton` toggles the restart
@@ -52,6 +65,15 @@ function hideOverlay() {
 
 // ---------- Game ----------
 const game = createGame();
+
+// T-spin announcement: the core reports the classification on the `clear`
+// event; the renderer only reads `state.announce`. Keeping the timestamp in the
+// UI layer means the core stays clock-free.
+game.on((type, payload) => {
+  if (type !== "clear" || !payload.tspin) return;
+  const label = payload.type === "tspin_full" ? "T-SPIN" : "T-SPIN MINI";
+  game.state.announce = { text: label, at: performance.now() };
+});
 
 // The stored record is loaded once; the core owns the live value and the
 // write happens only when a game ends.
@@ -86,6 +108,7 @@ attachInput({
 
 restartBtn.addEventListener("click", () => {
   game.reset();
+  game.state.announce = null;
   hideOverlay();
   restartBtn.blur();
 });
