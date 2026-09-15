@@ -351,7 +351,7 @@ test("html: the overlay stacks above the board", () => {
  *  the mute state, that the state is persisted, and that the
  *  effects object is advanced by the frame loop.
  * ========================================================= */
-test("ui: M toggles mute and persists it", async () => {
+test("ui: M cycles SFX -> SFX+music -> muted and persists", async () => {
   const app = await bootApp();
   // A storage the app can actually write to (Node has no localStorage).
   const store = {};
@@ -361,25 +361,37 @@ test("ui: M toggles mute and persists it", async () => {
     removeItem: (k) => { delete store[k]; },
   };
 
-  assert.equal(app.mod.audio.muted, false, "sound is on by default");
+  const audio = app.mod.audio;
+  assert.equal(audio.muted, false, "sound is on by default");
+  assert.equal(audio.musicOn, false, "no music by default");
 
+  // 1st M: SFX -> SFX + music.
   app.document.fire("keydown", key("m"));
-  assert.equal(app.mod.audio.muted, true, "M must mute");
+  assert.equal(audio.muted, false, "still not muted");
+  assert.equal(audio.musicOn, true, "music turns on");
+
+  // 2nd M: SFX + music -> muted.
+  app.document.fire("keydown", key("m"));
+  assert.equal(audio.muted, true, "M must mute");
   assert.equal(store["tetris.muted"], "1", "and the mute is persisted");
+  assert.equal(audio.musicOn, false, "music stops with the mute");
 
+  // 3rd M: muted -> SFX only (music off).
   app.document.fire("keydown", key("m"));
-  assert.equal(app.mod.audio.muted, false, "M again unmutes");
+  assert.equal(audio.muted, false, "M again unmutes");
   assert.equal(store["tetris.muted"], "0", "and that is persisted too");
+  assert.equal(audio.musicOn, false, "music does not come back");
 
   delete globalThis.localStorage;
 });
 
-test("ui: a held M (repeat) does not flicker the mute", async () => {
+test("ui: a held M (repeat) does not flicker the state", async () => {
   const app = await bootApp();
   app.document.fire("keydown", key("m"));
-  assert.equal(app.mod.audio.muted, true);
+  assert.equal(app.mod.audio.musicOn, true, "first press turns music on");
   app.document.fire("keydown", key("m", true)); // OS auto-repeat
-  assert.equal(app.mod.audio.muted, true, "a repeat keydown is ignored");
+  assert.equal(app.mod.audio.musicOn, true, "a repeat keydown is ignored");
+  assert.equal(app.mod.audio.muted, false);
 });
 
 test("ui: the mute badge is shown only while muted", async () => {
@@ -388,14 +400,17 @@ test("ui: the mute badge is shown only while muted", async () => {
   assert.equal(badge.classList.contains("visible"), false,
     "no badge while the sound is on");
 
+  // Two presses reach muted (SFX -> music -> muted).
+  app.document.fire("keydown", key("m"));
   app.document.fire("keydown", key("m"));
   assert.equal(badge.classList.contains("visible"), true,
     "the badge appears when muted");
   assert.equal(badge.textContent, "MUTE");
 
+  // A third press goes back to SFX only.
   app.document.fire("keydown", key("m"));
   assert.equal(badge.classList.contains("visible"), false,
-    "and disappears when unmuted");
+    "the badge disappears when unmuted");
 });
 
 test("ui: the frame loop advances the effects", async () => {

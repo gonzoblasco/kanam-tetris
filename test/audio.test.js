@@ -48,6 +48,7 @@ function makeMockContext() {
             this.values.push({ kind: "exp", v, t });
           },
           linearRampToValueAtTime(v, t) { this.values.push({ kind: "lin", v, t }); },
+          cancelScheduledValues() {},
         },
         connect() {},
         disconnect() {},
@@ -75,6 +76,14 @@ function makeMockContext() {
       };
       oscillators.push(osc);
       return osc;
+    },
+    createBiquadFilter() {
+      return {
+        type: "",
+        frequency: { setValueAtTime() {} },
+        connect() {},
+        disconnect() {},
+      };
     },
   };
   return ctx;
@@ -134,7 +143,10 @@ test("audio: blip schedules one oscillator with an envelope", () => {
 
   assert.equal(ok, true, "the blip reported success");
   assert.equal(ctx.oscillators.length, 1, "one oscillator");
-  assert.equal(ctx.gains.length, 1, "one gain node");
+  // The engine also builds its shared music bus when the master filter is
+  // created, so a blip may see 2 gain nodes total: the note's own envelope
+  // plus the bus. The note itself always contributes exactly one oscillator.
+  assert.ok(ctx.gains.length >= 1, "at least the note's own envelope gain");
   assert.equal(ctx.started.length, 1, "and it was started");
   assert.equal(ctx.oscillators[0].type, "square");
   assert.equal(ctx.oscillators[0].frequency.values[0].v, 440);

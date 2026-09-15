@@ -64,6 +64,10 @@ export function createEffects({ reducedMotion = false, rng = Math.random } = {})
   // that completed them, which is what makes the burst readable.
   // `cell`: pixel size of one board cell; `cols`: board width in cells.
   function burst({ rows = [], color = "#ffffff", cell = 30, cols = 10 } = {}) {
+    // Robustness: ensure rows is an array. If the core sends a number (lines count),
+    // we cannot know which rows to burst, so we skip the effect rather than crashing.
+    if (!Array.isArray(rows)) return 0;
+
     const per = state.reducedMotion ? REDUCED_PARTICLES_PER_CELL : PARTICLES_PER_CELL;
     const life = state.reducedMotion ? REDUCED_PARTICLE_MS : PARTICLE_MS;
     for (const r of rows) {

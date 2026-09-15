@@ -219,7 +219,18 @@ attachInput({
     }
   },
   onMute() {
-    audio.toggleMuted();
+    // M cycles through three states: SFX only -> SFX + music -> muted.
+    // Music kicks in on the M key as well as the first gesture, so the
+    // player who wants the Korobeiniki can reach it without touching
+    // anything else.
+    if (!audio.muted && !audio.musicOn) {
+      audio.setMusic(true);
+    } else if (!audio.muted && audio.musicOn) {
+      audio.toggleMuted(); // SFX + music -> muted (music stops with it)
+    } else {
+      audio.setMuted(false); // muted -> SFX only
+      audio.setMusic(false);
+    }
     saveMuted(audio.muted);
     updateMuteUI();
   },
