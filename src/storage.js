@@ -9,6 +9,7 @@
  * ========================================================= */
 
 export const HIGH_SCORE_KEY = "tetris.highscore";
+export const MUTED_KEY = "tetris.muted";
 
 export function loadHighScore() {
   try {
@@ -24,5 +25,24 @@ export function saveHighScore(value) {
     localStorage.setItem(HIGH_SCORE_KEY, String(value));
   } catch (e) {
     /* storage unavailable - keep the in-memory record only */
+  }
+}
+
+// Mute is persisted as the literal "1"/"0" rather than a boolean, because
+// localStorage stores strings: getItem would hand back the string "false",
+// which is truthy and would mute the game forever on reload.
+export function loadMuted() {
+  try {
+    return localStorage.getItem(MUTED_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+
+export function saveMuted(value) {
+  try {
+    localStorage.setItem(MUTED_KEY, value ? "1" : "0");
+  } catch (e) {
+    /* storage unavailable - mute still works for this session */
   }
 }

@@ -171,9 +171,43 @@
     gap: 16px;
     border-radius: 8px;
     text-align: center;
+    /* v0.5: a 150ms fade instead of a dry appearance. The class toggles
+       opacity; `visibility` keeps it out of the tab order when hidden
+       (display:none would kill the transition). */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 150ms ease, visibility 0s linear 150ms;
   }
 
-  #overlay.visible { display: flex; }
+  #overlay.visible {
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 150ms ease, visibility 0s linear 0s;
+  }
+
+  /* Accessibility: no fade when the user asked for reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    #overlay,
+    #overlay.visible {
+      transition: none;
+    }
+  }
+
+  /* Mute indicator: only shown while the sound is off. */
+  #mute {
+    display: none;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.5);
+    border-radius: 4px;
+    padding: 3px 6px;
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  #mute.visible { display: block; }
 
   #overlay h1 {
     font-size: 26px;
@@ -217,6 +251,7 @@
       <button id="restart">Reiniciar</button>
     </div>
   </div>
+  </div>
 
   <div id="side">
     <div id="previews">
@@ -242,6 +277,7 @@
       <div class="value" id="score">0</div>
       <div id="combo">x2 combo</div>
       <div id="b2b">BACK-TO-BACK</div>
+      <div id="mute">MUTE</div>
     </div>
     <div class="panel secondary">
       <h2>Nivel</h2>
@@ -258,6 +294,7 @@
       <b>↑</b> rotar<br>
       <b>Espacio</b> caída rápida<br>
       <b>C</b> reservar pieza<br>
+      <b>M</b> silenciar<br>
       <b>P / Esc</b> pausa
     </div>
   </div>

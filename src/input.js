@@ -9,9 +9,12 @@
  * ========================================================= */
 
 /* =========================================================
- *  attachInput({ game, target, blurTarget, onGameOver, onPauseChange })
+ *  attachInput({ game, target, blurTarget, onGameOver, onPauseChange, onMute })
+ *
+ *  onMute is optional: input.js only forwards the key, it never
+ *  knows what mute means. main.js owns the audio engine.
  * ========================================================= */
-export function attachInput({ game, target, blurTarget, onGameOver, onPauseChange }) {
+export function attachInput({ game, target, blurTarget, onGameOver, onPauseChange, onMute }) {
   // Normalise once so "Escape"/"Esc", "p"/"P" and arrows compare alike.
   function onKeyDown(e) {
     const key = e.key.toLowerCase();
@@ -42,6 +45,13 @@ export function attachInput({ game, target, blurTarget, onGameOver, onPauseChang
 
     if (key === "c") {
       if (!e.repeat) game.holdPiece();
+      return;
+    }
+
+    // Mute is UI state, not a rule: input.js forwards it and main.js
+    // decides. Handled before the clearing guard so M works mid-flash.
+    if (key === "m") {
+      if (!e.repeat && onMute) onMute();
       return;
     }
 
