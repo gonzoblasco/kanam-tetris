@@ -10,6 +10,12 @@
  *  The active piece glows while grounded, so the imminent
  *  lock is visible - a read-only signal from the state.
  *
+ *  Game feel (v0.5): screen shake and clear particles come
+ *  from src/effects.js, which the loop advances. The renderer
+ *  only READS them (offset + particle list); it still never
+ *  mutates state. Particles are drawn as outlined squares with
+ *  a faint fill, the same cajita grammar as every cell.
+ *
  *  Draws whatever state it is handed. It never mutates the
  *  game state and never decides anything about the rules.
  * ========================================================= */
@@ -30,7 +36,11 @@ const DOT_ALPHA = 0.06;    // board floor dot intensity
 const GHOST_DASH = [3, 4]; // dash pattern for the ghost outline
 const STROKE_LOCKED = 1;   // settled cell outline width
 const STROKE_ACTIVE = 2;   // active piece outline width
-const FILL_ALPHA = 0.10;   // wireframe cell fill (barely there)
+// Soft shade of the piece color: enough that the cell reads as its own color
+// instead of a black face, still translucent so the outline and the dot floor
+// stay legible. A gentle top-to-bottom gradient gives it a lit-from-above feel.
+const FILL_ALPHA_TOP = 0.30;
+const FILL_ALPHA_BOTTOM = 0.18;
 
 // ---------- Color helpers ----------
 function hexToRgb(hex) {
@@ -43,13 +53,16 @@ function rgba(color, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// A "cajita": outline of the piece color plus a faint fill. The
+// A "cajita": outline of the piece color plus a soft shade fill. The
 // stroke is inset by half its width so it stays inside the cell.
 function drawCellWire(context, x, y, color, size, lineWidth = STROKE_LOCKED) {
   const px = x * size;
   const py = y * size;
   const inset = lineWidth / 2;
-  context.fillStyle = rgba(color, FILL_ALPHA);
+  const grad = context.createLinearGradient(px, py, px, py + size);
+  grad.addColorStop(0, rgba(color, FILL_ALPHA_TOP));
+  grad.addColorStop(1, rgba(color, FILL_ALPHA_BOTTOM));
+  context.fillStyle = grad;
   context.fillRect(px, py, size, size);
   context.strokeStyle = rgba(color, 0.8);
   context.lineWidth = lineWidth;
@@ -77,9 +90,12 @@ function drawPreview(context, target, type, size) {
 }
 
 /* =========================================================
- *  createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas })
+ *  createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas, effects })
+ *
+ *  `effects` is optional: without it the renderer draws exactly
+ *  as v0.4 did, which keeps the existing DOM tests valid.
  * ========================================================= */
-export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas }) {
+export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas, effects = null }) {
   const ctx = canvas.getContext("2d");
   const nextCtx = nextCanvas.getContext("2d");
   const holdCtx = holdCanvas.getContext("2d");
@@ -87,6 +103,15 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas }) 
 
   function drawBoard(state) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Shake: the whole board is translated by the offset the effects
+    // module computed for this frame. Read-only: the renderer asks for
+    // the value, it never advances the timer. Saved/restored so the
+    // offset cannot leak into the next frame or the previews.
+    const shakeX = effects ? effects.state.shakeX : 0;
+    const shakeY = effects ? effects.state.shakeY : 0;
+    ctx.save();
+    if (shakeX || shakeY) ctx.translate(shakeX, shakeY);
 
     // Board floor: a faint dot grid at cell centers. Quieter than
     // the former grid lines, it reads as a piso under the pieces.
@@ -130,8 +155,34 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas }) 
     const cur = state.current;
     if (!state.gameOver && !state.clearing && cur) drawActivePiece(state, cur);
 
-    // The announcement rides on top of everything: it is the newest event.
+    // Particles sit above the pieces (they are the newest event) but
+    // below the announcement and the frame.
+    drawParticles();
+
+    ctx.restore(); // end of the shake transform
+
+    // The announcement and the board frame are NOT shaken: the frame is
+    // the reference the shake reads against, so moving it would hide the
+    // effect entirely.
     drawAnnounce(state);
+  }
+
+  // One particle is a small outlined square in the cleared piece's color,
+  // fading with the remaining life. Same cajita grammar as the cells.
+  function drawParticles() {
+    if (!effects) return;
+    for (const p of effects.state.particles) {
+      const t = p.maxLife > 0 ? Math.max(0, p.life / p.maxLife) : 0;
+      const size = p.size;
+      ctx.save();
+      ctx.globalAlpha = t;
+      ctx.fillStyle = rgba(p.color, 0.18);
+      ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+      ctx.strokeStyle = rgba(p.color, 0.85);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - size / 2 + 0.5, p.y - size / 2 + 0.5, size - 1, size - 1);
+      ctx.restore();
+    }
   }
 
   function drawActivePiece(state, cur) {
@@ -246,7 +297,7 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas }) 
     drawQueue(state);
   }
 
-  return { draw, drawBoard, drawNext, drawHold, drawQueue };
+  return { draw, drawBoard, drawNext, drawHold, drawQueue, CELL_SIZE: CELL };
 }
 
 // Local ghost calculation so the renderer stays free of core internals.

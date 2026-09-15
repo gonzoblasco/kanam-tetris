@@ -37,6 +37,12 @@ function makeCtx() {
     textBaseline: "",
     setLineDash() {},
     clearRect() {},
+    // The wireframe cells fill with a vertical gradient; the fake must offer
+    // it or every draw throws. It returns a stub the renderer only feeds to
+    // fillStyle.
+    createLinearGradient() {
+      return { addColorStop() {} };
+    },
     fillRect() { calls.push("fillRect"); },
     strokeRect() { calls.push("strokeRect"); },
     beginPath() {},
@@ -90,7 +96,7 @@ async function bootApp() {
   const ids = [
     ...canvasIds,
     "overlay", "overlay-title", "overlay-sub", "restart",
-    "hiscore", "score", "level", "lines", "combo", "b2b",
+    "hiscore", "score", "level", "lines", "combo", "b2b", "mute",
   ];
   const els = {};
   for (const id of ids) {
@@ -334,4 +340,93 @@ test("html: the tilt stays subtle enough to read columns", () => {
 test("html: the overlay stacks above the board", () => {
   assert.ok(/z-index:\s*1/.test(HTML),
     "the overlay needs an explicit z-index; without one the composition order depends on paint order");
+});
+
+/* =========================================================
+ *  v0.5 - mute, effects wiring and the overlay fade.
+ *
+ *  Same seam as everything above: main.js against a fake DOM.
+ *  Audio itself is asserted in test/audio.test.js with an
+ *  injected mock; what matters here is that the KEY reaches
+ *  the mute state, that the state is persisted, and that the
+ *  effects object is advanced by the frame loop.
+ * ========================================================= */
+test("ui: M toggles mute and persists it", async () => {
+  const app = await bootApp();
+  // A storage the app can actually write to (Node has no localStorage).
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; },
+  };
+
+  assert.equal(app.mod.audio.muted, false, "sound is on by default");
+
+  app.document.fire("keydown", key("m"));
+  assert.equal(app.mod.audio.muted, true, "M must mute");
+  assert.equal(store["tetris.muted"], "1", "and the mute is persisted");
+
+  app.document.fire("keydown", key("m"));
+  assert.equal(app.mod.audio.muted, false, "M again unmutes");
+  assert.equal(store["tetris.muted"], "0", "and that is persisted too");
+
+  delete globalThis.localStorage;
+});
+
+test("ui: a held M (repeat) does not flicker the mute", async () => {
+  const app = await bootApp();
+  app.document.fire("keydown", key("m"));
+  assert.equal(app.mod.audio.muted, true);
+  app.document.fire("keydown", key("m", true)); // OS auto-repeat
+  assert.equal(app.mod.audio.muted, true, "a repeat keydown is ignored");
+});
+
+test("ui: the mute badge is shown only while muted", async () => {
+  const app = await bootApp();
+  const badge = app.els.mute;
+  assert.equal(badge.classList.contains("visible"), false,
+    "no badge while the sound is on");
+
+  app.document.fire("keydown", key("m"));
+  assert.equal(badge.classList.contains("visible"), true,
+    "the badge appears when muted");
+  assert.equal(badge.textContent, "MUTE");
+
+  app.document.fire("keydown", key("m"));
+  assert.equal(badge.classList.contains("visible"), false,
+    "and disappears when unmuted");
+});
+
+test("ui: the frame loop advances the effects", async () => {
+  const app = await bootApp();
+  const { effects } = app.mod;
+
+  effects.burst({ rows: [19], cell: 30, cols: 10 });
+  assert.ok(effects.state.particles.length > 0, "precondition: particles exist");
+
+  app.tick(16);
+  const afterOne = effects.state.particles[0].life;
+
+  app.tick(16);
+  const afterTwo = effects.state.particles[0].life;
+
+  assert.ok(afterTwo < afterOne,
+    "each frame must age the particles: a frozen effects object means the loop never calls update()");
+});
+
+test("ui: the game keeps running with no audio available (Node, no AudioContext)", async () => {
+  const app = await bootApp();
+  const { game } = app.mod;
+  // Playing must work end to end with the silent engine.
+  assert.doesNotThrow(() => app.document.fire("keydown", key(" ")));
+  assert.doesNotThrow(() => app.tick(16));
+  assert.ok(game.state.current, "the game is still playable");
+});
+
+test("html: the overlay fades instead of appearing dryly", () => {
+  assert.ok(/transition:\s*opacity 150ms/.test(HTML),
+    "the overlay needs a 150ms opacity transition");
+  assert.ok(/@media\s*\(prefers-reduced-motion:\s*reduce\)/.test(HTML),
+    "and the fade must be disabled under reduced motion");
 });
