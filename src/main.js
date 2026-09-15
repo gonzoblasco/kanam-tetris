@@ -259,6 +259,11 @@ document.addEventListener("keyup", (e) => {
   if (e && e.key === " ") lastKeyWasHardDrop = false;
 });
 
+// A pointer gesture is the most reliable way to satisfy the browser's
+// autoplay policy (a keydown on the wrong element can stay suspended).
+// The first click anywhere wakes the audio; it is harmless after.
+window.addEventListener("pointerdown", () => audio.ensureContext(true), { once: true, capture: true });
+
 restartBtn.addEventListener("click", () => {
   game.reset();
   game.state.announce = null;
