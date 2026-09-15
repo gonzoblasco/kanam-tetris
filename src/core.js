@@ -166,6 +166,18 @@ export function createGame(options = {}) {
     announce: null,
   };
 
+  // The lookup queue the renderer draws (R4). It lives on `state`, not on the
+  // returned object, because the renderer receives `state`: a mismatch here is
+  // invisible to core tests and left the COLA panel empty in v0.4.
+  // Reading it never consumes the bag; it only refills when it cannot cover
+  // the window.
+  Object.defineProperty(state, "queue", {
+    get() {
+      while (state.bag.length < NEXT_QUEUE_SIZE) refillBag();
+      return [state.nextType, ...state.bag].slice(0, NEXT_QUEUE_SIZE);
+    },
+  });
+
   // Listeners notified about things the UI must react to. The core never
   // touches storage or the DOM; it just reports.
   const listeners = new Set();
@@ -786,13 +798,6 @@ export function createGame(options = {}) {
     collides,
     grounded,
     ghostY,
-    // R4: the upcoming pieces, active-adjacent order. It never consumes
-    // the bag: it only refills when the bag cannot cover the request.
-    get queue() {
-      while (state.bag.length < NEXT_QUEUE_SIZE) refillBag();
-      const types = [state.nextType, ...state.bag];
-      return types.slice(0, NEXT_QUEUE_SIZE);
-    },
     // events
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   };

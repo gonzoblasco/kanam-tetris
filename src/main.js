@@ -64,7 +64,10 @@ function hideOverlay() {
 }
 
 // ---------- Game ----------
-const game = createGame();
+// Exported so the DOM tests can drive a real game (see test/dom.test.js):
+// the game-over and queue bugs both lived in this file's wiring, invisible to
+// the core suite. Exporting costs nothing in the browser.
+export const game = createGame();
 
 // Event hook: the core announces the end through `gameover`; the UI listens
 // instead of diffing frames, because a lock can end the game BETWEEN frames

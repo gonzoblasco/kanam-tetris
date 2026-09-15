@@ -450,7 +450,7 @@ test("b2b: a T-spin with lines is a difficult clear and arms the chain", () => {
 test("queue: five entries, active-adjacent, from the 7-bag", () => {
   const order = ["T", "I", "O", "S", "Z", "J", "L"];
   const game = makeGame({ order });
-  const q = game.queue;
+  const q = game.state.queue;
   assert.equal(q.length, NEXT_QUEUE_SIZE, "the queue is 5 deep");
   assert.equal(q[0], game.state.nextType, "the head equals nextType");
   assert.deepEqual(q, order.slice(1, 6), "the queue follows the forced bag order");
@@ -458,9 +458,9 @@ test("queue: five entries, active-adjacent, from the 7-bag", () => {
 
 test("queue: reading it does not consume the bag", () => {
   const game = makeGame({ order: ["T", "I", "O", "S", "Z", "J", "L"] });
-  const before = game.queue.slice();
+  const before = game.state.queue.slice();
   const bagLen = game.state.bag.length;
-  assert.deepEqual(game.queue, before, "two reads agree");
+  assert.deepEqual(game.state.queue, before, "two reads agree");
   assert.equal(game.state.bag.length, bagLen, "reading never shifts the bag");
 });
 
@@ -468,7 +468,7 @@ test("queue: it refills instead of running short at the bag boundary", () => {
   const game = createGame({ rng: noShuffleRng });
   game.state.bag = ["T"];
   game.state.nextType = "I";
-  const q = game.queue;
+  const q = game.state.queue;
   assert.equal(q.length, NEXT_QUEUE_SIZE, "the queue is never short");
   assert.equal(q[0], "I");
   assert.equal(q[1], "T");
@@ -478,7 +478,7 @@ test("queue: it refills instead of running short at the bag boundary", () => {
 test("queue: a 5-piece window never repeats a type", () => {
   const game = createGame({ rng: noShuffleRng });
   for (let round = 0; round < 5; round++) {
-    const q = game.queue;
+    const q = game.state.queue;
     assert.equal(new Set(q).size, q.length, `window ${round} has a duplicate`);
     game.state.nextType = game.state.bag.shift(); // consume one like spawn()
   }
@@ -488,11 +488,11 @@ test("queue: a 5-piece window never repeats a type", () => {
 // piece becomes the head. The window must stay 5 deep and keep its order.
 test("queue: a hold shifts the window by exactly one entry", () => {
   const game = makeGame({ order: ["T", "I", "O", "S", "Z", "J", "L"] });
-  assert.deepEqual(game.queue, ["I", "O", "S", "Z", "J"], "before the hold");
+  assert.deepEqual(game.state.queue, ["I", "O", "S", "Z", "J"], "before the hold");
 
   game.holdPiece();
 
-  const after = game.queue;
+  const after = game.state.queue;
   assert.equal(after.length, NEXT_QUEUE_SIZE, "the window is still 5 deep");
   assert.equal(after[0], "O", "the incoming piece is the new head");
   assert.deepEqual(after, ["O", "S", "Z", "J", "L"], "the rest keeps its order");
@@ -502,7 +502,7 @@ test("queue: a hold shifts the window by exactly one entry", () => {
 test("queue: reset rebuilds a full window", () => {
   const game = makeGame({ order: ["T", "I", "O", "S", "Z", "J", "L"] });
   game.reset();
-  const q = game.queue;
+  const q = game.state.queue;
   assert.equal(q.length, NEXT_QUEUE_SIZE, "still 5 deep after a reset");
   assert.equal(q[0], game.state.nextType, "the head still matches nextType");
 });
