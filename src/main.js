@@ -66,10 +66,13 @@ function hideOverlay() {
 // ---------- Game ----------
 const game = createGame();
 
-// T-spin announcement: the core reports the classification on the `clear`
-// event; the renderer only reads `state.announce`. Keeping the timestamp in the
-// UI layer means the core stays clock-free.
+// Event hook: the core announces the end through `gameover`; the UI listens
+// instead of diffing frames, because a lock can end the game BETWEEN frames
+// (hardDrop runs synchronously in the keydown handler, outside step()).
+// A frame diff misses that transition entirely - Gonzo hit exactly that:
+// topping out by hard drop never showed the game over overlay.
 game.on((type, payload) => {
+  if (type === "gameover") { endGameUI(); return; }
   if (type !== "clear" || !payload.tspin) return;
   const label = payload.type === "tspin_full" ? "T-SPIN" : "T-SPIN MINI";
   game.state.announce = { text: label, at: performance.now() };
@@ -122,15 +125,10 @@ function update(time = 0) {
   const delta = Math.max(0, Math.min(time - lastTime, 100));
   lastTime = time;
 
-  const wasGameOver = game.state.gameOver;
-
   game.step(delta);
 
   const state = game.state;
   updateHUD(state);
-
-  // A lock can end the game; react to the transition exactly once.
-  if (state.gameOver && !wasGameOver) endGameUI();
 
   renderer.draw(state);
   requestAnimationFrame(update);
