@@ -251,23 +251,26 @@ attachInput({
 // not keep playing the thud.
 let lastKeyWasHardDrop = false;
 
-document.addEventListener(
-  "keydown",
-  (e) => {
-    if (e && e.key === " ") lastKeyWasHardDrop = true;
-    audio.ensureContext(true);
-  },
-  true,
-);
+// Wake the audio on the first, and only the first, real gesture. Each
+// gesture while the context stays suspended re-arms the resume(), because
+// the Autoplay policy only grants it once a TRUSTED gesture arrives - a
+// keydown on the wrong element, or a click while the tab lacks focus, is
+// not trusted and only a later trusted gesture wakes it. Listening to the
+// pointer and key events (but not the synthetic repeat keydowns) covers
+// every way a player starts.
+let audioWoken = false;
+function maybeWakeAudio(event) {
+  if (audio.muted || audio.musicOn) return;
+  if (audioWoken && audio.isRunning()) return;
+  audioWoken = audio.wakeAudio(true);
+  if (!audioWoken) {
+    // Not yet trusted; keep trying on the next real gesture.
+    audioWoken = false;
+  }
+}
 
-document.addEventListener("keyup", (e) => {
-  if (e && e.key === " ") lastKeyWasHardDrop = false;
-});
-
-// A pointer gesture is the most reliable way to satisfy the browser's
-// autoplay policy (a keydown on the wrong element can stay suspended).
-// The first click anywhere wakes the audio; it is harmless after.
-window.addEventListener("pointerdown", () => audio.ensureContext(true), { once: true, capture: true });
+document.addEventListener("keydown", maybeWakeAudio, { capture: true });
+window.addEventListener("pointerdown", maybeWakeAudio, { capture: true, once: false });
 
 restartBtn.addEventListener("click", () => {
   game.reset();

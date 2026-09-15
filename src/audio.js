@@ -138,14 +138,31 @@ export function createAudio({ contextFactory, muted = false, music = false } = {
     },
 
     _resumeSoftly() {
-      if (typeof context.resume === "function") {
-        try {
-          const p = context.resume();
-          if (p && typeof p.catch === "function") p.catch(() => {});
-        } catch (e) {
-          /* ignore */
+      if (typeof context.resume !== "function") return;
+      try {
+        const p = context.resume();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => {});
+        } else if (typeof p === "boolean" && p === false) {
+          // A stale spec returned a boolean; leave it and retry later.
         }
+      } catch (e) {
+        /* ignore */
       }
+    },
+
+    // The Autoplay policy leaves a fresh context suspended until a trusted
+    // user gesture. `resume()` returns a promise that only becomes pending
+    // once a trusted gesture happens; a stale/non-trusted one rejects
+    // immediately. So the correct loop is: on every gesture, while the
+    // context is still suspended, call resume() again. The first trusted
+    // gesture that comes along wins.
+    wakeAudio(gesture) {
+      const ctx = audio.ensureContext(gesture);
+      if (!ctx) return false;
+      if (audio.contextState() === "running") return true;
+      audio._resumeSoftly();
+      return audio.contextState() === "running";
     },
 
     // ---------- Primitive ----------
