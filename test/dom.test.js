@@ -73,6 +73,10 @@ function makeEl(id, width, height) {
     get textContent() { return text; },
     set textContent(v) { text = String(v); },
     style: {},
+    dataset: {},
+    attributes: {},
+    setAttribute(k, v) { this.attributes[k] = String(v); },
+    getAttribute(k) { return k in this.attributes ? this.attributes[k] : null; },
     ctx,
     classes,
     classList: {

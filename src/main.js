@@ -60,6 +60,11 @@ function updateMuteUI() {
   if (!muteEl) return;
   muteEl.textContent = audio.muted ? "MUTE" : "SONIDO";
   muteEl.classList.toggle("visible", audio.muted);
+  // Show the live Autoplay state so a muted-turned-suspended case is not
+  // silent by accident: the badge tells the player whether audio woke.
+  const st = audio.contextState();
+  muteEl.dataset.audioState = st;
+  muteEl.setAttribute("aria-label", `audio ${st}`);
 }
 
 const renderer = createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas, effects });

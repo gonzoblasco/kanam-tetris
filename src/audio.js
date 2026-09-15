@@ -121,6 +121,22 @@ export function createAudio({ contextFactory, muted = false, music = false } = {
       return context !== null;
     },
 
+    // The Autoplay policy leaves a fresh context suspended until a trusted
+    // gesture. This returns the live state so the UI can tell the player
+    // "audio woke" vs "still suspended" instead of failing silently.
+    contextState() {
+      if (!context) return "none";
+      const s = typeof context.state === "function" ? context.state() : context.state;
+      return typeof s === "string" && s.length ? s : "unknown";
+    },
+
+    // A context born suspended only starts once resume() runs from inside a
+    // trusted gesture. This polls: if it is still suspended one event loop
+    // later, it has not been woken and the UI should know.
+    isRunning() {
+      return audio.contextState() === "running";
+    },
+
     _resumeSoftly() {
       if (typeof context.resume === "function") {
         try {
