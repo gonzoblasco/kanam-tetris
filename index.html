@@ -42,6 +42,14 @@
   /* The board container tilts like a slab resting on the table; the
      canvas itself stays an undistorted rect grid inside (no column
      misreading). The tilt is a perspective hint, not a bend. */
+  #board-stack {
+    position: relative;
+  }
+
+  /* The tilt lives on its own wrapper: perspective creates a 3D rendering
+     context, and the tilted canvas composites on top of any flat sibling at
+     z=0. The overlay must sit OUTSIDE that context or the board paints over
+     it (the overlay did show, but the canvas hid it). */
   #board-wrap {
     perspective: 1000px;
   }
@@ -154,6 +162,7 @@
   #overlay {
     position: absolute;
     inset: 0;
+    z-index: 1;
     background: rgba(10, 12, 15, 0.86);
     display: none;
     align-items: center;
@@ -198,8 +207,10 @@
 <body>
 
 <div id="game">
-  <div id="board-wrap" style="position: relative;">
-    <canvas id="board" width="300" height="600"></canvas>
+  <div id="board-stack">
+    <div id="board-wrap">
+      <canvas id="board" width="300" height="600"></canvas>
+    </div>
     <div id="overlay">
       <h1 id="overlay-title">Fin del juego</h1>
       <p id="overlay-sub">Pulsa Enter o el botón para reiniciar</p>

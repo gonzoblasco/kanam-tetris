@@ -17,6 +17,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 // A 2D context that records the calls the renderer makes.
 function makeCtx() {
@@ -268,4 +271,67 @@ test("ui: each frame schedules the next one", async () => {
   app.tick(16);
   assert.ok(app.raf.length >= before,
     "the loop must re-arm requestAnimationFrame every frame");
+});
+
+/* =========================================================
+ *  Static structure: the overlay must sit OUTSIDE the
+ *  perspective context.
+ *
+ *  `perspective` on a shared parent puts the overlay and the
+ *  tilted canvas in the SAME 3D rendering context, so the
+ *  tilted canvas composites over the flat overlay and hides it.
+ *  That is exactly what Gonzo saw: the overlay was showing, but
+ *  the board painted on top of it. The overlay is flat UI and
+ *  belongs outside. No core test can see a CSS contract, so it
+ *  is pinned here by reading index.html.
+ * ========================================================= */
+const HTML = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "index.html"),
+  "utf8",
+);
+
+// Inner slice of the div with the given id, matching nested <div> tags so the
+// result does not depend on formatting or whitespace.
+function innerOf(id) {
+  const open = new RegExp(`<div[^>]*id="${id}"[^>]*>`);
+  const m = open.exec(HTML);
+  if (!m) return null;
+  const start = m.index + m[0].length;
+  const tag = /<\/?div\b[^>]*>/g;
+  tag.lastIndex = start;
+  let depth = 1;
+  let t;
+  while ((t = tag.exec(HTML))) {
+    depth += t[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) return HTML.slice(start, t.index);
+  }
+  return null;
+}
+
+test("html: the overlay is outside the perspective wrapper", () => {
+  const wrap = innerOf("board-wrap");
+  assert.ok(wrap !== null, "#board-wrap must exist");
+  assert.ok(!wrap.includes('id="overlay"'),
+    "#overlay must NOT be inside #board-wrap: perspective makes the tilted canvas composite over it");
+
+  const stack = innerOf("board-stack");
+  assert.ok(stack !== null, "#board-stack must exist as the flat positioning parent");
+  assert.ok(stack.includes('id="overlay"'),
+    "#overlay belongs inside #board-stack");
+  assert.ok(stack.includes('id="board-wrap"'),
+    "#board-stack also holds the tilted canvas wrapper");
+});
+
+test("html: the tilt stays subtle enough to read columns", () => {
+  assert.ok(/perspective:\s*1000px/.test(HTML), "the tilt declares a perspective");
+  const m = /rotateX\((\d+)deg\)/.exec(HTML);
+  assert.ok(m, "the canvas is rotated on X");
+  const deg = Number(m[1]);
+  assert.ok(deg >= 8 && deg <= 16,
+    `the tilt must stay in 8-16deg so columns remain readable, got ${deg}`);
+});
+
+test("html: the overlay stacks above the board", () => {
+  assert.ok(/z-index:\s*1/.test(HTML),
+    "the overlay needs an explicit z-index; without one the composition order depends on paint order");
 });
