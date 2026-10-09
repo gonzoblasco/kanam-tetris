@@ -56,22 +56,31 @@ export function attachInput({ game, target, blurTarget, onGameOver, onPauseChang
     }
 
     switch (key) {
+      // Left movement (arrow left or "a")
       case "arrowleft":
+      case "a":
         e.preventDefault();
         if (!e.repeat) game.pressMove(-1); // OS repeat deliberately ignored
         break;
+      // Right movement (arrow right or "d")
       case "arrowright":
+      case "d":
         e.preventDefault();
         if (!e.repeat) game.pressMove(1);
         break;
+      // Soft drop (arrow down or "s")
       case "arrowdown":
+      case "s":
         e.preventDefault();
         game.softDrop();
         break;
+      // Rotate (arrow up or "w")
       case "arrowup":
+      case "w":
         e.preventDefault();
         if (!e.repeat) game.rotate(1);
         break;
+      // Hard drop (space)
       case " ":
         e.preventDefault();
         if (!e.repeat) game.hardDrop();
@@ -81,8 +90,8 @@ export function attachInput({ game, target, blurTarget, onGameOver, onPauseChang
 
   function onKeyUp(e) {
     const key = e.key.toLowerCase();
-    if (key === "arrowleft") game.releaseMove(-1);
-    if (key === "arrowright") game.releaseMove(1);
+    if (key === "arrowleft" || key === "a") game.releaseMove(-1);
+    if (key === "arrowright" || key === "d") game.releaseMove(1);
   }
 
   // Releasing focus mid-hold would otherwise leave the piece sliding.
