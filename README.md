@@ -85,13 +85,17 @@ El mismo patrón de inyección de costura se repite donde el browser no está: `
 
 El handler de pérdida de foco se registra en `window`, no en `document`: `blur` no burbujea y el foco de ventana se dispara en `window`. Si se registra en `document` (como pasó en una iteración del refactor), el handler nunca corre y una flecha apretada deja el DAS vivo al salir de la ventana con Cmd+Tab, así que la pieza sigue deslizándose al volver. `attachInput` acepta `blurTarget` inyectable justamente para que esa costura sea testeable en Node sin browser (ver `test/input.test.js`).
 
+## Lo que ya se hizo (identidad visual, ADR-097)
+
+1. **Materiales por pieza en el core** (U1, commit `d4da40b`): cada tetrominó lleva su `pattern` de material (`I=lumber, O=cobble, T=brick, S=silk, Z=sand, J=water, L=metal`) + `PATTERN_NAMES`. La identidad es dato testeable, no decoración de render.
+2. **Render monocromo Game Boy** (U2, `3555ac4`): `render.js` dibuja cada bloque con su **textura de material** (veta, piedritas, ladrillos, trama, punteado, ondas, remaches), en los 4 tonos DMG-01. Cero color ajeno: las piezas se identifican por **patrón y silueta**, nunca por color ni brillo. El estampado es determinista (sin `Math.random`): un material no parpadea.
+3. **Chrome Kanam Design System** (U3, `2b3c561`): la UI (paneles, overlays, tipografía, botones) consume los tokens del DS (`styles/kanam.css` + `dark.css`, dark-first). **Frontera por capa**: el DS gobierna el chrome; el canvas sigue Game Boy.
+
 ## Lo que queda
 
-T-spins, combos, sonido y cola de 5 piezas **ya están implementados** (v0.4–v0.5). Pendiente real, en orden de intención:
-
-1. **Identidad visual Game Boy monocroma con patrones por pieza** — decisión cerrada, ver ADR-097 del workspace. Reemplaza el lenguaje "wireframe" con color por uno monocromo donde la pieza se identifica por **patrón de material** (no por color ni brillo). Toca `core.js` (la pieza lleva su patrón) y reescribe `render.js`.
-2. **Chrome Kanam Design System** — reemplazar el tema a mano de `index.html` por los tokens del sistema.
-3. **Multijugador y móvil** — sin empezar.
+1. **Multijugador y móvil** — sin empezar.
+2. **Evaluación de la identidad** (fase C4 del roadmap): verificar que las 7 piezas se distinguen **sin color** (daltonismo, escala de grises). Métrica del método.
+3. **Método extraído** (fase C5): escribir cómo se diseña una identidad por material y silueta, reusable para otras obras.
 
 ## Motor de los agentes
 
