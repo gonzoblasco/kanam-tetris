@@ -298,17 +298,18 @@ test("render: MICRO_PATTERNS defines 7 distinct 8x8 material patterns", () => {
   for (const name of keys) {
     const grid = MICRO_PATTERNS[name];
     assert.ok(Array.isArray(grid), `${name}: pattern must be an array of rows`);
-    assert.equal(grid.length, 8, `${name}: pattern must be 8 rows tall`);
+    // Updated to 16×16 per the new U8 requirement.
+    assert.equal(grid.length, 16, `${name}: pattern must be 16 rows tall`);
     let ink = 0;
     for (const row of grid) {
       assert.ok(Array.isArray(row), `${name}: each row must be an array`);
-      assert.equal(row.length, 8, `${name}: each row must be 8 sub-pixels wide`);
+      assert.equal(row.length, 16, `${name}: each row must be 16 sub-pixels wide`);
       for (const sub of row) {
         assert.ok(sub === 0 || sub === 1, `${name}: sub-pixels are 0 (bg) or 1 (ink)`);
         if (sub) ink++;
       }
     }
-    assert.equal(grid.length * grid[0].length, 64, `${name}: must be a 64 sub-pixel grid`);
+    assert.equal(grid.length * grid[0].length, 256, `${name}: must be a 256 sub-pixel grid`);
     assert.ok(ink > 0, `${name}: a texture with zero ink would leave the cell blank`);
   }
 
