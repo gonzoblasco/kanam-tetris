@@ -19,11 +19,32 @@ export const COLS = 10;
 export const ROWS = 20;
 
 // Base drop interval (ms) at level 1; decreases every level.
-export const BASE_DROP_INTERVAL = 800;
+// Base drop interval (ms) at level 1. Updated for U7: start faster (600 ms)
+// and use a multiplicative decay curve (~1.3× faster each level) to emulate
+// classic NES/Game Boy Tetris.
+export const BASE_DROP_INTERVAL = 600;
 
 // Points per line-clear count (single/double/triple/tetris), x level.
 export const SCORE_TABLE = [0, 100, 300, 500, 800];
 export const LINES_PER_LEVEL = 10;
+
+// Gravity ceiling: the drop interval never drops below this.
+export const MIN_DROP_INTERVAL = 50;
+
+// Multiplicative gravity decay (~1.3x faster each level), NES/Game Boy style.
+// Each level multiplies the previous interval by this factor; at level 10 the
+// result lands in the classic ~50-60 ms sweet spot.
+const GRAVITY_DECAY = 0.77;
+
+// Single source of truth for the gravity curve. Pure: level in, interval out.
+// level 1 -> BASE_DROP_INTERVAL (600 ms), decaying ~1.3x per level, floored
+// at MIN_DROP_INTERVAL (50 ms).
+export function dropIntervalFor(level) {
+  return Math.max(
+    MIN_DROP_INTERVAL,
+    Math.round(BASE_DROP_INTERVAL * Math.pow(GRAVITY_DECAY, level - 1)),
+  );
+}
 
 // v0.4 scoring (guideline).
 // T-spin values, x level. Indexed by line count (single/double/triple).
@@ -65,6 +86,108 @@ export const PIECES = {
   Z: { color: "#f87171", matrix: [[1,1,0],[0,1,1],[0,0,0]], pattern: "sand" },
   J: { color: "#60a5fa", matrix: [[1,0,0],[1,1,1],[0,0,0]], pattern: "water" },
   L: { color: "#fb923c", matrix: [[0,0,1],[1,1,1],[0,0,0]], pattern: "metal" },
+};
+
+/**
+ * Micro‑grid 4×4 patterns for each material. 0 = background (light GB tone),
+ * 1 = ink (dark GB tone). Designed to be distinct at ~30 px cell size.
+ */
+/**
+ * Micro‑grid patterns – 8×8 matrices of 0/1.
+ *
+ * Each material must be visually distinct at ~30 px per cell. The patterns
+ * below follow the owner‑provided design brief:
+ *   I – vertical wood grain with a single “knot” interruption.
+ *   O – checker‑board stone cobbles.
+ *   T – brick wall with staggered rows.
+ *   S – dense cross‑hatch (no diagonal).
+ *   Z – scattered sand‑grain points.
+ *   J – horizontal sinusoidal water wave.
+ *   L – metal sheet with a grid and rivet dots at corners.
+ *
+ * All patterns use only 0 (background) and 1 (ink). They are sized 8×8 so the
+ * renderer can compute the sub‑pixel size dynamically (size / pattern.length).
+ */
+export const MICRO_PATTERNS = {
+  lumber: [
+    // Vertical lines every two columns, a single missing cell as a knot.
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 0, 0, 1], // knot in column 5 of this row
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+  ],
+  cobble: [
+    // Classic checkerboard of stones.
+    [1, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 0, 1, 0, 1, 0, 1],
+  ],
+  brick: [
+    // Staggered brick rows – each brick 2×2 cells.
+    [1, 1, 0, 0, 1, 1, 0, 0],
+    [1, 1, 0, 0, 1, 1, 0, 0],
+    [0, 0, 1, 1, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 0, 1, 1],
+    [1, 1, 0, 0, 1, 1, 0, 0],
+    [1, 1, 0, 0, 1, 1, 0, 0],
+    [0, 0, 1, 1, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 0, 1, 1],
+  ],
+  silk: [
+    // Dense orthogonal cross‑hatch: even rows have vertical lines at even columns,
+    // odd rows are empty. This creates a grid of dots distinct from the checker
+    // pattern of cobble and from the vertical‑line lumber pattern.
+    [1, 0, 1, 0, 1, 0, 1, 0], // row 0 – vertical lines
+    [0, 0, 0, 0, 0, 0, 0, 0], // row 1 – empty
+    [1, 0, 1, 0, 1, 0, 1, 0], // row 2 – vertical lines
+    [0, 0, 0, 0, 0, 0, 0, 0], // row 3 – empty
+    [1, 0, 1, 0, 1, 0, 1, 0], // row 4 – vertical lines
+    [0, 0, 0, 0, 0, 0, 0, 0], // row 5 – empty
+    [1, 0, 1, 0, 1, 0, 1, 0], // row 6 – vertical lines
+    [0, 0, 0, 0, 0, 0, 0, 0], // row 7 – empty
+  ],
+  sand: [
+    // Scattered points – deterministic layout.
+    [0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1],
+  ],
+  water: [
+    // Horizontal sinusoidal wave approximated with ink rows.
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 1, 0, 0, 0, 0, 1, 0],
+    [1, 0, 0, 0, 0, 0, 0, 1],
+    [0, 1, 0, 0, 0, 0, 1, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 1, 0, 0, 0, 0, 1, 0],
+    [1, 0, 0, 0, 0, 0, 0, 1],
+    [0, 1, 0, 0, 0, 0, 1, 0],
+  ],
+  metal: [
+    // Grid with rivet dots at the four corners of each cell.
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 1, 0, 0, 1, 0],
+    [1, 0, 0, 1, 0, 0, 1, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 1, 0, 0, 1, 0],
+    [1, 0, 0, 1, 0, 0, 1, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 1, 0, 0, 1, 0],
+  ],
 };
 
 // Export a flat list of pattern names that can be iterated by renderers or
@@ -597,7 +720,7 @@ export function createGame(options = {}) {
     // Level up every 10 lines; gravity speeds up each level. Order matters:
     // the score pass above ran at the pre-level-up level, as before.
     state.level = Math.floor(state.lines / LINES_PER_LEVEL) + 1;
-    state.dropInterval = Math.max(60, BASE_DROP_INTERVAL - (state.level - 1) * 70);
+    state.dropInterval = dropIntervalFor(state.level);
     checkHighScore();
     emit("clear", {
       rows: full.length,
@@ -765,7 +888,7 @@ export function createGame(options = {}) {
     state.score = 0;
     state.level = 1;
     state.lines = 0;
-    state.dropInterval = BASE_DROP_INTERVAL;
+    state.dropInterval = dropIntervalFor(1);
     state.dropCounter = 0;
     state.gameOver = false;
     state.paused = false;

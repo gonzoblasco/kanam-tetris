@@ -14,3 +14,7 @@
 /tmp/
 *.bak
 *.orig
+
+# Preview/verificacion local (no es del proyecto)
+render-preview.mjs
+tramas-preview.png

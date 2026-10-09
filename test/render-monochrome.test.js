@@ -24,7 +24,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { PIECES, PIECE_TYPES, PATTERN_NAMES, COLS, ROWS } from "../src/core.js";
+import { PIECES, PIECE_TYPES, PATTERN_NAMES, MICRO_PATTERNS, COLS, ROWS } from "../src/core.js";
 import { createRenderer, CELL } from "../src/render.js";
 import { emptyBoardString, boardFromString } from "./harness.js";
 
@@ -278,58 +278,75 @@ test("render.js: the ONLY colours in the file are the 4 GB tones (strict monochr
   }
 });
 
-test("render: all 7 material stamping functions exist", () => {
-  const fns = ["drawLumber", "drawCobble", "drawBrick", "drawSilk", "drawSand", "drawWater", "drawMetal"];
-  for (const fn of fns) {
-    const re = new RegExp(`function\\s+${fn}\\s*\\(`);
-    assert.ok(re.test(RENDER_SRC), `missing material stamping function ${fn}`);
+test("render: MICRO_PATTERNS defines 7 distinct 8x8 material patterns", () => {
+  // The new design (v0.5) draws each material from a DATA TABLE, not from a
+  // per-material function plus a switch case. This test verifies that the table
+  // now contains 8×8 grids (64 sub‑pixels) and that the 7 textures remain
+  // pairwise distinct.
+  const materials = Object.values(PATTERN_NAMES);
+  assert.equal(materials.length, 7, "the piece model must name 7 materials");
+  assert.equal(new Set(materials).size, 7, "the 7 material names must be distinct");
+
+  const keys = Object.keys(MICRO_PATTERNS);
+  assert.equal(keys.length, 7, "MICRO_PATTERNS must define exactly 7 materials");
+  assert.deepEqual(
+    [...keys].sort(),
+    [...new Set(materials)].sort(),
+    "MICRO_PATTERNS must define a pattern for each material the pieces name",
+  );
+
+  for (const name of keys) {
+    const grid = MICRO_PATTERNS[name];
+    assert.ok(Array.isArray(grid), `${name}: pattern must be an array of rows`);
+    assert.equal(grid.length, 8, `${name}: pattern must be 8 rows tall`);
+    let ink = 0;
+    for (const row of grid) {
+      assert.ok(Array.isArray(row), `${name}: each row must be an array`);
+      assert.equal(row.length, 8, `${name}: each row must be 8 sub-pixels wide`);
+      for (const sub of row) {
+        assert.ok(sub === 0 || sub === 1, `${name}: sub-pixels are 0 (bg) or 1 (ink)`);
+        if (sub) ink++;
+      }
+    }
+    assert.equal(grid.length * grid[0].length, 64, `${name}: must be a 64 sub-pixel grid`);
+    assert.ok(ink > 0, `${name}: a texture with zero ink would leave the cell blank`);
   }
-  // Each material stamped by the model must have a case in drawPattern().
-  const patterns = Object.values(PATTERN_NAMES);
-  assert.equal(new Set(patterns).size, 7, "the 7 materials must be distinct");
-  for (const name of patterns) {
-    assert.ok(
-      new RegExp(`case\\s+"${name}"`).test(RENDER_SRC),
-      `drawPattern() has no case for material "${name}"`,
-    );
-  }
+
+  // Pairwise distinct: serialise each grid and prove no two materials collide.
+  const serialised = keys.map((n) => MICRO_PATTERNS[n].map((r) => r.join("")).join("/"));
+  assert.equal(
+    new Set(serialised).size,
+    keys.length,
+    `the 7 material textures must be pairwise distinct, got ${new Set(serialised).size} unique`,
+  );
 });
 
-test("accessibility: two pieces sharing a tone still get DIFFERENT patterns", () => {
-  // The core already guarantees 7 distinct patterns. Here we prove the
-  // renderer preserves that: the tone map is cyclic (TONE_BY_TYPE lives in
-  // render.js), so same-tone pairs MUST exist and MUST map to distinct
-  // materials. If this ever collapses, tone would start carrying identity.
-  const TONE_BY_TYPE = {
-    I: 0, O: 1, T: 2, S: 3, Z: 0, J: 1, L: 2,
-  };
-  const patterns = new Set(PIECE_TYPES.map((t) => PIECES[t].pattern));
-  assert.equal(patterns.size, 7, "the 7 piece patterns must be pairwise distinct");
+test("accessibility: the 7 pieces map to 7 distinct materials (identity is never tone)", () => {
+  // ADR-097: a piece is identified by its MATERIAL PATTERN, never by colour or
+  // brightness. The old design assigned each piece a decorative TONE and
+  // relied on same-tone pieces still having different materials; the new design
+  // dropped per-piece tones entirely (the renderer paints one fixed light
+  // background + one fixed dark outline). What must hold - and what this test
+  // now pins - is that every piece names a distinct, defined material, so two
+  // pieces can never share a texture (and thus a visual identity).
+  const patterns = PIECE_TYPES.map((t) => PIECES[t].pattern);
+  assert.equal(patterns.length, 7, "there are 7 piece types");
+  assert.equal(new Set(patterns).size, 7, "the 7 piece materials must be pairwise distinct");
 
-  // Group types by their render tone.
-  const byTone = new Map();
   for (const t of PIECE_TYPES) {
-    const tone = TONE_BY_TYPE[t];
-    (byTone.get(tone) || byTone.set(tone, []).get(tone)).push(t);
-  }
-  const pairs = [...byTone.values()].filter((g) => g.length > 1);
-  assert.ok(pairs.length > 0, "the tone map must be cyclic: some tone is reused");
-
-  for (const group of pairs) {
-    const mats = new Set(group.map((t) => PIECES[t].pattern));
-    assert.equal(
-      mats.size,
-      group.length,
-      `tone shared by ${group.join(",")} must still map to distinct materials, got ${[...mats].join(",")}`,
+    const name = PIECES[t].pattern;
+    assert.ok(
+      MICRO_PATTERNS[name],
+      `piece ${t} names material "${name}" but MICRO_PATTERNS has no such texture`,
     );
   }
 
-  // And the renderer really consults the pattern for each type: the source
-  // map from type to tone must cover all 7 types.
-  const toneKeys = (RENDER_SRC.match(/TONE_BY_TYPE\s*=\s*\{([\s\S]*?)\}/) || [])[1] || "";
-  for (const t of PIECE_TYPES) {
-    assert.ok(new RegExp(`\\b${t}\\s*:`).test(toneKeys), `TONE_BY_TYPE has no entry for ${t}`);
-  }
+  // The renderer must NOT carry a per-piece tone map: tone never encodes
+  // identity (this is the dead-concept guard for the removed TONE_BY_TYPE).
+  assert.ok(
+    !/TONE_BY_TYPE/.test(RENDER_SRC),
+    "render.js must not reintroduce a per-piece tone map: tone is not an identity channel",
+  );
 });
 
 test("render.js: no Math.random - material stamping is deterministic", () => {

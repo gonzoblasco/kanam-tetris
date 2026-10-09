@@ -17,6 +17,8 @@ import {
   MAX_LOCK_RESETS,
   DAS_MS,
   ARR_MS,
+  dropIntervalFor,
+  MIN_DROP_INTERVAL,
 } from "../src/core.js";
 import {
   makeGame,
@@ -558,17 +560,17 @@ test("scoring: line clear value is table x level", () => {
   assert.equal(game.state.level, 1);
 });
 
-test("gravity: the drop interval matches v0.2 at level 1", () => {
+test("gravity: the drop interval starts at BASE_DROP_INTERVAL (600 ms) at level 1", () => {
   const game = makeGame({ order: ["T", "I", "O"] });
   forcePiece(game, "T", { x: 4, y: 0, rot: 0 });
-  assert.equal(game.state.dropInterval, 800);
-  game.step(800); // dropCounter > 800 is the v0.2 condition
-  assert.equal(game.state.current.y, 0, "not yet at exactly 800");
+  assert.equal(game.state.dropInterval, 600);
+  game.step(600); // dropCounter > 600 is the drop condition
+  assert.equal(game.state.current.y, 0, "not yet at exactly 600");
   game.step(1);
-  assert.equal(game.state.current.y, 1, "drops just past 800");
+  assert.equal(game.state.current.y, 1, "drops just past 600");
 });
 
-test("reset: returns the game to a clean v0.2 starting state", () => {
+test("reset: returns the game to a clean starting state", () => {
   const game = makeGame({ order: ["T", "I", "O"] });
   forcePiece(game, "O", { x: 4, y: 18, rot: 0 });
   game.step(LOCK_DELAY_MS);
@@ -594,5 +596,32 @@ test("reset: returns the game to a clean v0.2 starting state", () => {
   assert.equal(game.state.clearing, null);
   assert.equal(game.state.paused, false);
   assert.equal(countCells(game), 0, "the board is empty");
-  assert.equal(game.state.dropInterval, 800);
+  assert.equal(game.state.dropInterval, 600);
 });
+
+// U7: the gravity curve is multiplicative (~1.3x per level), floored at 50 ms.
+test("gravity curve: level 1 is 600 ms", () => {
+  assert.equal(dropIntervalFor(1), 600);
+});
+
+test("gravity curve: the interval decreases monotonically", () => {
+  for (let level = 2; level <= 30; level += 1) {
+    assert.ok(
+      dropIntervalFor(level) <= dropIntervalFor(level - 1),
+      `level ${level} must not be slower than level ${level - 1}`,
+    );
+  }
+});
+
+test("gravity curve: high levels respect the 50 ms floor", () => {
+  // Level 10 sits in the classic NES/Game Boy ~50-60 ms window.
+  assert.ok(
+    dropIntervalFor(10) >= 50 && dropIntervalFor(10) <= 60,
+    `level 10 should be ~50-60 ms, got ${dropIntervalFor(10)}`,
+  );
+  // No level ever drops below the floor.
+  for (const level of [15, 20, 50, 100]) {
+    assert.equal(dropIntervalFor(level), MIN_DROP_INTERVAL);
+  }
+});
+

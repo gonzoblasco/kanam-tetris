@@ -20,7 +20,7 @@
  *  game state and never decides anything about the rules.
  * ========================================================= */
 
-import { COLS, ROWS, CLEAR_FLASH_MS, LOCK_DELAY_MS, PIECES, cellsOf, NEXT_QUEUE_SIZE } from "./core.js";
+import { COLS, ROWS, CLEAR_FLASH_MS, LOCK_DELAY_MS, PIECES, cellsOf, NEXT_QUEUE_SIZE, MICRO_PATTERNS } from "./core.js";
 
 export const CELL = 30;       // board cell size in px
 export const PREVIEW_CELL = 16; // cell size used by the hold preview
@@ -46,18 +46,6 @@ const FILL_ALPHA_BOTTOM = 0.18;
 // ---------- Monochrome palette (Game Boy DMG‑01) ----------
 // Four tones of the same hue, varying only in lightness.
 const PALETTE = ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"];
-
-// Map piece types to a tone index (decorative). The mapping is cyclic; any
-// consistent assignment works as long as tones are drawn from PALETTE.
-const TONE_BY_TYPE = {
-  I: 0,
-  O: 1,
-  T: 2,
-  S: 3,
-  Z: 0,
-  J: 1,
-  L: 2,
-};
 
 /** Helper: convert hex colour to rgb components. */
 function hexToRgb(hex) {
@@ -198,51 +186,37 @@ function drawMetal(context, x, y, size) {
 }
 
 /** Dispatch pattern drawing based on material name. */
-function drawPattern(context, x, y, patternName, toneIdx, size, lineWidth = STROKE_LOCKED) {
+function drawPattern(context, x, y, patternName, size, lineWidth = STROKE_LOCKED) {
   const px = x * size;
   const py = y * size;
   const inset = lineWidth / 2;
-  const tone = PALETTE[toneIdx % PALETTE.length];
-  // Fill with tone (solid, no gradient – monochrome aesthetic).
-  context.fillStyle = tone;
+  // Background fill: light GB tone (palette index 3).
+  const bgTone = PALETTE[3];
+  context.fillStyle = bgTone;
   context.fillRect(px, py, size, size);
-  // Stroke for cell outline – slightly darker tone.
-  context.strokeStyle = rgba(tone, 0.8);
+  // Cell outline with dark GB tone (palette index 0).
+  const outlineTone = PALETTE[0];
+  context.strokeStyle = rgba(outlineTone, 0.8);
   context.lineWidth = lineWidth;
   context.strokeRect(px + inset, py + inset, size - lineWidth, size - lineWidth);
-  // Draw the texture.
+  // Draw the micro‑grid pattern.
+  const pattern = MICRO_PATTERNS[patternName];
+  if (pattern) {
+  // Determine sub‑pixel granularity from the pattern dimensions (now 8×8).
+  const dim = pattern.length; // assumed square matrix
+  const subSize = size / dim;
   context.save();
   context.translate(px, py);
-  context.lineWidth = 1;
-  context.strokeStyle = rgba(tone, 0.6);
-  context.fillStyle = rgba(tone, 0.4);
-  switch (patternName) {
-    case "lumber":
-      drawLumber(context, 0, 0, size);
-      break;
-    case "cobble":
-      drawCobble(context, 0, 0, size);
-      break;
-    case "brick":
-      drawBrick(context, 0, 0, size);
-      break;
-    case "silk":
-      drawSilk(context, 0, 0, size);
-      break;
-    case "sand":
-      drawSand(context, 0, 0, size);
-      break;
-    case "water":
-      drawWater(context, 0, 0, size);
-      break;
-    case "metal":
-      drawMetal(context, 0, 0, size);
-      break;
-    default:
-      // fallback: no texture.
-      break;
+  context.fillStyle = rgba(outlineTone, 0.6);
+  for (let row = 0; row < dim; row++) {
+    for (let col = 0; col < dim; col++) {
+      if (pattern[row][col]) {
+        context.fillRect(col * subSize, row * subSize, subSize, subSize);
+      }
+    }
   }
   context.restore();
+  }
 }
 // Reverse map from stored colour to piece type (used by drawCellPattern).
 const TYPE_BY_COLOR = Object.fromEntries(
@@ -253,7 +227,7 @@ const TYPE_BY_COLOR = Object.fromEntries(
 function drawCellPattern(context, x, y, colour, size, lineWidth = STROKE_LOCKED) {
   const type = TYPE_BY_COLOR[colour];
   if (!type) return; // unknown face: draw nothing rather than raw colour.
-  drawPattern(context, x, y, PIECES[type].pattern, TONE_BY_TYPE[type] ?? 0, size, lineWidth);
+  drawPattern(context, x, y, PIECES[type].pattern, size, lineWidth);
 }
 
 // Draw a piece type centered inside a small preview canvas.
@@ -389,10 +363,11 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas, ef
     // fill almost null. Same `gy !== cur.y` condition as before.
     const gy = ghostYFor(state, cur);
     if (gy !== cur.y) {
-      const tone = PALETTE[TONE_BY_TYPE[cur.type] % PALETTE.length];
+      const fillTone = PALETTE[3]; // light background tone
+      const strokeTone = PALETTE[0]; // dark outline tone
       ctx.save();
-      ctx.fillStyle = rgba(tone, 0.04);
-      ctx.strokeStyle = rgba(tone, 0.30);
+      ctx.fillStyle = rgba(fillTone, 0.04);
+      ctx.strokeStyle = rgba(strokeTone, 0.30);
       ctx.lineWidth = 1;
       ctx.setLineDash(GHOST_DASH);
       for (const [r, c] of cellsOf(cur.matrix)) {
@@ -411,7 +386,7 @@ export function createRenderer({ canvas, nextCanvas, holdCanvas, queueCanvas, ef
     const lockRatio = groundedHere ? Math.min(1, state.lockTimer / LOCK_DELAY_MS) : 0;
 
     if (lockRatio > 0) {
-      const tone = PALETTE[TONE_BY_TYPE[cur.type] % PALETTE.length];
+      const tone = PALETTE[0]; // dark tone for lock glow
       ctx.save();
       ctx.shadowColor = tone;
       ctx.shadowBlur = 6 + 22 * lockRatio;
