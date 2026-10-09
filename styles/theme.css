@@ -1,0 +1,75 @@
+/* Theme mappings using Kanam Design System tokens */
+body {
+  background: var(--k-surface-base);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--k-text-primary);
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+#game { display: flex; gap: 28px; padding: 24px; }
+
+#board-stack {
+  position: relative;
+}
+
+/* The tilt lives on its own wrapper: perspective creates a 3D rendering
+   context, and the tilted canvas composites on top of any flat sibling at
+   z=0. The overlay must sit OUTSIDE that context or the board paints over
+   it (the overlay did show, but the canvas hid it). */
+#board-wrap {
+  perspective: 1000px;
+}
+
+#board {
+  background: var(--k-surface-card);
+  border: 1px solid var(--k-border-strong);
+  border-radius: 8px;
+  display: block;
+  transform: rotateX(12deg);
+  transform-origin: 50% 20%;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55), 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+.panel {
+  background: var(--k-surface-card);
+  border: 1px solid var(--k-border-base);
+  border-radius: var(--k-radius-panel);
+  padding: var(--k-space-inset-sm);
+}
+
+.panel h2 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--k-text-muted);
+  margin-bottom: 6px;
+}
+
+.panel .value { font-size: 20px; font-weight: 700; }
+
+.panel.primary .value { font-size: 30px; color: var(--k-brand-primary); }
+
+.panel.secondary .value { font-size: 16px; color: var(--k-text-muted); }
+
+.panel canvas { display: block; margin: 0 auto; }
+
+#controls { font-size: 11px; color: var(--k-text-muted); line-height: 1.8; }
+#controls b { color: var(--k-text-primary); font-weight: 600; }
+
+#overlay { position: absolute; inset: 0; z-index: 1; background: rgba(10, 12, 15, 0.86); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; border-radius: 8px; text-align: center; opacity: 0; visibility: hidden; transition: opacity 150ms ease, visibility 0s linear 150ms; }
+#overlay.visible { display: flex; opacity: 1; visibility: visible; transition: opacity 150ms ease, visibility 0s linear 0s; }
+@media (prefers-reduced-motion: reduce) { #overlay, #overlay.visible { transition: none; } }
+#mute { display: none; font-size: 10px; letter-spacing: 0.1em; color: #f87171; border: 1px solid rgba(248, 113, 113, 0.5); border-radius: 4px; padding: 3px 6px; margin-top: 6px; text-align: center; }
+#mute.visible { display: block; }
+#overlay h1 { font-size: 26px; font-weight: 700; color: var(--k-brand-primary); }
+#overlay p { color: var(--k-text-muted); font-size: 13px; }
+#restart { background: transparent; color: var(--k-brand-primary); border: 1px solid var(--k-brand-primary); border-radius: 4px; padding: 10px 24px; font-family: inherit; font-size: 14px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+#restart:hover { background: var(--k-brand-primary); color: var(--k-surface-base); }

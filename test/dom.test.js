@@ -300,6 +300,19 @@ const HTML = readFileSync(
   "utf8",
 );
 
+// U3: the inline <style> moved to styles/theme.css (DS tokens). The HTML
+// contract is now split in two: index.html must link the stylesheet, and
+// theme.css must carry the layout rules. Read both, so the tests still
+// pin a real rule instead of passing vacuously.
+const THEME = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "styles", "theme.css"),
+  "utf8",
+);
+
+function themeLinksThemeCss() {
+  return /<link[^>]*rel="stylesheet"[^>]*href="styles\/theme\.css"[^>]*>/.test(HTML);
+}
+
 // Inner slice of the div with the given id, matching nested <div> tags so the
 // result does not depend on formatting or whitespace.
 function innerOf(id) {
@@ -333,8 +346,11 @@ test("html: the overlay is outside the perspective wrapper", () => {
 });
 
 test("html: the tilt stays subtle enough to read columns", () => {
-  assert.ok(/perspective:\s*1000px/.test(HTML), "the tilt declares a perspective");
-  const m = /rotateX\((\d+)deg\)/.exec(HTML);
+  assert.ok(themeLinksThemeCss(),
+    "index.html must link styles/theme.css (the layout moved out of the inline <style>)");
+  assert.ok(/perspective:\s*1000px/.test(THEME),
+    "theme.css declares the perspective on #board-wrap");
+  const m = /rotateX\((\d+)deg\)/.exec(THEME);
   assert.ok(m, "the canvas is rotated on X");
   const deg = Number(m[1]);
   assert.ok(deg >= 8 && deg <= 16,
@@ -342,8 +358,10 @@ test("html: the tilt stays subtle enough to read columns", () => {
 });
 
 test("html: the overlay stacks above the board", () => {
-  assert.ok(/z-index:\s*1/.test(HTML),
-    "the overlay needs an explicit z-index; without one the composition order depends on paint order");
+  assert.ok(themeLinksThemeCss(),
+    "index.html must link styles/theme.css");
+  assert.ok(/z-index:\s*1/.test(THEME),
+    "theme.css needs an explicit z-index on #overlay; without one the composition order depends on paint order");
 });
 
 /* =========================================================
@@ -444,8 +462,10 @@ test("ui: the game keeps running with no audio available (Node, no AudioContext)
 });
 
 test("html: the overlay fades instead of appearing dryly", () => {
-  assert.ok(/transition:\s*opacity 150ms/.test(HTML),
-    "the overlay needs a 150ms opacity transition");
-  assert.ok(/@media\s*\(prefers-reduced-motion:\s*reduce\)/.test(HTML),
+  assert.ok(themeLinksThemeCss(),
+    "index.html must link styles/theme.css");
+  assert.ok(/transition:\s*opacity 150ms/.test(THEME),
+    "theme.css needs a 150ms opacity transition on #overlay");
+  assert.ok(/@media\s*\(prefers-reduced-motion:\s*reduce\)/.test(THEME),
     "and the fade must be disabled under reduced motion");
 });

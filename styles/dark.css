@@ -1,0 +1,34 @@
+/* Dark theme tokens copied from workspace */
+[data-theme="dark"] {
+  --k-brand-primary: #6ee7a0;
+  --k-brand-primaryHover: #8ff0b6;
+  --k-brand-primarySubtle: #1c3a2b;
+  --k-brand-secondary: #a9b6b1;
+  --k-brand-accent: #fcd34d;
+  --k-text-primary: #f0f4f2;
+  --k-text-secondary: #a9b6b1;
+  --k-text-muted: #8ea39a;
+  --k-text-inverse: #16211d;
+  --k-text-onBrand: #062b1c;
+  --k-text-link: #6ee7a0;
+  --k-surface-base: #222d29;
+  --k-surface-card: #2a3632;
+  --k-surface-elevated: #333f3b;
+  --k-surface-sunken: #1a2420;
+  --k-surface-inverse: #f0f4f2;
+  --k-border-subtle: #35423d;
+  --k-border-base: #46544e;
+  --k-border-strong: #7a8a82;
+  --k-state-success: #6ee7a0;
+  --k-state-successSubtle: #16301f;
+  --k-state-warning: #fcd34d;
+  --k-state-warningSubtle: #33280a;
+  --k-state-danger: #fca5a5;
+  --k-state-dangerSubtle: #3a1e1e;
+  --k-state-info: #7dd3fc;
+  --k-state-infoSubtle: #0f2a3a;
+  --k-focus-ring: #6ee7a0;
+  --k-focus-ringOffset: #222d29;
+  --k-focus-width: 2px;
+  --k-focus-offset: 2px;
+}
