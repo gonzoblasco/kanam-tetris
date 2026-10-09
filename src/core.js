@@ -48,15 +48,30 @@ export const DAS_MS = 170;          // delayed auto shift: hold delay
 export const ARR_MS = 50;           // auto repeat rate once DAS has charged
 
 // ---------- Tetromino definitions (SRS spawn states) ----------
+// Each tetromino carries a stable MATERIAL pattern identifier (ADR-097).
+// The pattern is a plain semantic string naming the MATERIAL TEXTURE the
+// renderer stamps into the block - it is deliberately NOT a shape descriptor
+// (a shape is already conveyed by the matrix/silhouette) and NOT a colour
+// value. Per ADR-097 the material pattern is the primary identification
+// channel, so every tetromino names a different material. The canonical list
+// (owner-defined) is: I=lumber, O=cobble, T=brick, S=silk, Z=sand, J=water,
+// L=metal. Keeping the pattern on the piece model (and not in the renderer)
+// is what makes the identity testable without any UI.
 export const PIECES = {
-  I: { color: "#22d3ee", matrix: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
-  O: { color: "#facc15", matrix: [[1,1],[1,1]] },
-  T: { color: "#c084fc", matrix: [[0,1,0],[1,1,1],[0,0,0]] },
-  S: { color: "#4ade80", matrix: [[0,1,1],[1,1,0],[0,0,0]] },
-  Z: { color: "#f87171", matrix: [[1,1,0],[0,1,1],[0,0,0]] },
-  J: { color: "#60a5fa", matrix: [[1,0,0],[1,1,1],[0,0,0]] },
-  L: { color: "#fb923c", matrix: [[0,0,1],[1,1,1],[0,0,0]] },
+  I: { color: "#22d3ee", matrix: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], pattern: "lumber" },
+  O: { color: "#facc15", matrix: [[1,1],[1,1]], pattern: "cobble" },
+  T: { color: "#c084fc", matrix: [[0,1,0],[1,1,1],[0,0,0]], pattern: "brick" },
+  S: { color: "#4ade80", matrix: [[0,1,1],[1,1,0],[0,0,0]], pattern: "silk" },
+  Z: { color: "#f87171", matrix: [[1,1,0],[0,1,1],[0,0,0]], pattern: "sand" },
+  J: { color: "#60a5fa", matrix: [[1,0,0],[1,1,1],[0,0,0]], pattern: "water" },
+  L: { color: "#fb923c", matrix: [[0,0,1],[1,1,1],[0,0,0]], pattern: "metal" },
 };
+
+// Export a flat list of pattern names that can be iterated by renderers or
+// tests without needing to know the piece ordering.
+export const PATTERN_NAMES = Object.fromEntries(
+  Object.entries(PIECES).map(([type, def]) => [type, def.pattern])
+);
 
 export const PIECE_TYPES = Object.keys(PIECES);
 
