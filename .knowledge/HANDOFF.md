@@ -1,41 +1,47 @@
 # HANDOFF - kanam-tetris
 
-**Fecha:** 2026-10-09 01:45 GMT-3
+**Fecha:** 2026-10-12 03:20 GMT-3
 **Proyecto:** kanam-tetris
 **Branch:** main
 **Repo:** https://github.com/gonzoblasco/kanam-tetris
 **Autor:** Kanam (CORE)
 
-> HANDOFF generado en el cierre de sesion (2026-10-09). Es el punto de entrada para continuar este proyecto. El informe detallado de la sesion vive en `memory/2026-10-09.md`.
+> HANDOFF generado en el cierre de sesion (2026-10-12). Es el punto de entrada para continuar este proyecto. El informe detallado de la sesion vive en `memory/2026-10-12.md`.
 
 ---
 
 ## Que se hizo en esta sesion
 
-Sesion larga de kanam-tetris: identidad visual Game Boy + fixes + curva de velocidad. (1) U4: fix del bug de teclado (un </div> huerfano rompia el DOM; el juego no respondia a NINGUNA tecla con 138 tests en verde) + WASD (pedido del owner, zurdo) + guard de balance HTML. Commit 4894f15. (2) U5: render reescrito a la referencia visual del Game Boy (fondo claro #9bbc0f + cajas con contorno oscuro #0f380f + trama de material por celda). Se eliminaron TONE_BY_TYPE (muerto) y un switch trampa puesto para pasar un test. (3) U6: patrones subidos a 8x8 (64 sub-pixeles). (4) U7: curva de gravedad tipo NES via dropIntervalFor(level): 600ms en nivel 1 decayendo ~1.3x por nivel, techo 50ms. Reemplaza la lineal 70ms/nivel que era imperceptible. Commits U5-U7 en 1b77811. 142 tests pasan. (5) U8 EN VUELO al cerrar: llevando MICRO_PATTERNS a 16x16 (dibujos por material) + limpiar 7 funciones muertas + sacar TYPE_BY_COLOR. El subagente A murio en U7 y B completo; en general los auto-reportes de los agentes dijeron 'listo/verde' siendo falsos 4 veces (U1,U3,U5,U7) y el CORE los cazo verificando el repo real.
+Sesion de AUDITORIA de lo realizado en esta conversacion (2026-10-08/09) + commit del handoff comprimido. AUDITORIA (todo medido contra el repo real, no de memoria): (1) ADR-097 (identidad visual del juego: monocromo por materiales, no color ni brillo) commiteado en bf07d41074. (2) ADR-098 (proyectos vuelven a workspace/projects + cwd separa hogar de zona de trabajo, supersede ADR-075) commiteado en 4b49a098bb. (3) kanam-tetris: U1-U8 completas y pusheadas, HEAD e8d3cc7, 142 tests pasan (teclado+WASD, render GB fondo claro+cajas+tramas 16x16, curva de velocidad NES). El owner confirmo que la curva funciona (perdio en nivel 6). (4) Gobernanza: gitignore (sandbox->playground), AGENTS.md (.knowledge se versiona), NORTH.md (tetris reencuadrado A+C) en b81239c52e. (5) Nuevo: HANDOFF-COMPRIMIDO.md para modelos locales chicos, commit 95118e7 en kanam-tetris. FILTRADO: los cambios del 10/11/12 de octubre (accessibility-oracle, kanam-critic, PLAN-FASE-2, studies/openclaw-use-cases) NO son de esta conversacion y no se tocaron. Deudas de tetris que quedan: 3 tramas (lumber/water/sand) + 7 funciones muertas + TYPE_BY_COLOR.
 
 ## Estado actual
 
-kanam-tetris: teclado arreglado (WASD + flechas), render monocromo GB con cajas y tramas, curva de velocidad NES. 142 tests. Commiteado y pusheado hasta U7 (1b77811). U8 (patrones 16x16 + limpieza de render.js) EN VUELO al cerrar - working tree tiene src/core.js sin commitear con 1 test rojo (mid-flight). Server local corriendo en localhost:8123 (serve.py, no-store).
+Auditoria de esta conversacion completa. Todo commiteado y pusheado: ADR-097 (bf07d41074), ADR-098 (4b49a098bb), gobernanza (b81239c52e), kanam-tetris U1-U8 (HEAD e8d3cc7, 142 tests), handoff comprimido (95118e7). Nada pendiente de esta conversacion en el workspace. Los cambios del 10-12 oct son de otra sesion y no se tocaron.
 
 ## Proximos pasos
 
-1) Terminar U8: verificar los patrones 16x16, cobble!=sand y metal!=silk al ojo, confirmar que se limpiaron las 7 funciones muertas y TYPE_BY_COLOR, correr npm test, commitear. 2) Actualizar README + ADR-097 con el estado 16x16. 3) C4 del roadmap: evaluar la identidad sin color (daltonismo). 4) Pendiente general: commitear los 3 proyectos con working tree sucio (a11y-fixer, kanam-pulse, kanam-spec).
+1) kanam-tetris: refinar las 3 tramas que no leen al ojo (lumber/water/sand). 2) Borrar las 7 funciones muertas de render.js. 3) Sacar TYPE_BY_COLOR (render infiere tipo por color). 4) C4 del roadmap: evaluar la identidad sin color (daltonismo).
 
 ## Decisiones y contexto que no debe perderse
 
-- ADR-097 (identidad visual GB: fondo claro + cajas + trama por material; el patron es el canal, no el color ni el brillo). Grilla util = tamano de celda / 2px (a 30px, 16x16 es el techo nitido; 32x32 necesitaria celda de 60px y board gigante). El owner es zurdo (WASD). Los auto-reportes de subagentes NO son confiables: verificar el repo real siempre.
+- ADR-097 (identidad visual: materiales, no color; grilla util = celda/2px, 16x16 techo a 30px) y ADR-098 (proyectos en workspace/projects, ~/projects symlink, cwd dev/ops=workspace). Lecciones: los auto-reportes de subagentes mienten (4 veces en esta sesion), verificar el repo real siempre; test verde != funciona (el bug del </div>); un test que no puede fallar no es test.
 
 ## Archivos tocados
 
 ```
-CHANGELOG.md
+agents/kanam-auditor/skills/accessibility-oracle/bin/a11y-oracle
+agents/kanam-auditor/skills/accessibility-oracle/src/oracle.js
+agents/kanam-critic/ROADMAP.md
+memory/2026-10-12.md
+scripts/check-contrast.py
+studies/openclaw-use-cases/INDEX.md
+tests/python/test_contrast.py
 ```
 
 ## Como continuar
 
 1. Leer este HANDOFF (estado actual + proximos pasos).
-2. Leer `memory/2026-10-09.md` para el informe completo de la sesion.
+2. Leer `memory/2026-10-12.md` para el informe completo de la sesion.
 3. Verificar el estado real antes de actuar (git, tests, la DB).
 
 ---
